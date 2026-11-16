@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="shopeeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5733"/>
+      <stop offset="50%" stop-color="#EE4D2D"/>
+      <stop offset="100%" stop-color="#D03B1E"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="0.75" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  
+  <!-- Outer squircle background with Shopee brand gradient -->
+  <rect width="32" height="32" rx="7.5" fill="url(#shopeeGrad)"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+  
+  <!-- Smooth Chat Bubble -->
+  <path d="M7 14.2C7 9.7 10.7 6 15.3 6h1.4C21.3 6 25 9.7 25 14.2c0 4.5-3.7 8.2-8.3 8.2h-2.1l-4.2 2.6c-.6.4-1.4-.1-1.4-.8v-2.2C7.7 20.8 7 17.7 7 14.2z" fill="#ffffff" filter="url(#dropShadow)"/>
+  
+  <!-- Stylized "BR" monogram vector paths inside bubble -->
+  <!-- Letter B -->
+  <path d="M10.8 11.2h2.5c.9 0 1.5.3 1.5 1 0 .5-.3.8-.8.9.6.1.9.5.9 1 0 .8-.7 1.1-1.7 1.1h-2.4v-4zm1.1 1.5h1.2c.4 0 .6-.1.6-.4 0-.3-.2-.4-.6-.4h-1.2v.8zm0 1.7h1.4c.4 0 .7-.1.7-.4s-.3-.4-.7-.4h-1.4v.8z" fill="#EE4D2D"/>
+  
+  <!-- Letter R -->
+  <path d="M16.8 11.2h2.5c1 0 1.6.4 1.6 1.2 0 .6-.4 1-1 1.1l1.2 1.7h-1.3l-1.1-1.6h-.8v1.6h-1.1v-4zm1.1 1.7h1.3c.4 0 .6-.2.6-.5s-.2-.5-.6-.5h-1.3v1z" fill="#EE4D2D"/>
+</svg>
