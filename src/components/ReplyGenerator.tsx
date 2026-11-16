@@ -4,13 +4,15 @@ import {
   Check,
   Send,
   RotateCcw,
-  Bookmark,
+  Sparkles,
   Table as TableIcon,
   AlertCircle,
   MessageSquare,
 } from "lucide-react";
 import {
+  AppliedRuleChange,
   GeneratedReply,
+  LearnedRuleUpdate,
   ScriptScenario,
   StoreRuleEntry,
   ToneOption,
@@ -28,21 +30,11 @@ interface ReplyGeneratorProps {
   onSignIn: () => void;
   prefillInput: string;
   onClearPrefill: () => void;
-  onSaveToHistory: (entry: {
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  }) => Promise<boolean>;
+  onApplyLearnedRules: (
+    updates: LearnedRuleUpdate[]
+  ) => Promise<AppliedRuleChange[]>;
+  onOpenStoreRules?: () => void;
   onOpenInChatFlow?: (rawInput: string) => void;
-  loadedReply?: {
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  } | null;
 }
 
 export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
@@ -52,9 +44,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   onSignIn,
   prefillInput,
   onClearPrefill,
-  onSaveToHistory,
+  onApplyLearnedRules,
+  onOpenStoreRules,
   onOpenInChatFlow,
-  loadedReply,
 }) => {
   const [input, setInput] = useState("");
   const [carrierName, setCarrierName] = useState("");
@@ -71,8 +63,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const [activePathId, setActivePathId] = useState<string | null>(null);
   const [manualScenarioLock, setManualScenarioLock] = useState(false);
   const [tone, setTone] = useState<ToneOption>(ToneOption.STANDARD);
+  const [autoLearnRules, setAutoLearnRules] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isLearningFromEdit, setIsLearningFromEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<GeneratedReply | null>(null);
   const [outputPathId, setOutputPathId] = useState<string | null>(null);
@@ -80,7 +74,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const [editablePt, setEditablePt] = useState("");
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [savedFlag, setSavedFlag] = useState(false);
+  const [appliedRuleChanges, setAppliedRuleChanges] = useState<AppliedRuleChange[]>([]);
+  const [pendingLearnedUpdates, setPendingLearnedUpdates] = useState<LearnedRuleUpdate[]>([]);
+  const [learnNotice, setLearnNotice] = useState<string | null>(null);
 
   const branchingScenarios = useMemo(
     () => scenarios.filter((s) => s.paths && s.paths.length > 0),
@@ -109,10 +105,18 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const displayedPolicySummary =
     activeGeneratedPath?.policySummary ?? reply?.policySummary ?? "";
   const displayedRows = activeGeneratedPath?.rows ?? reply?.rows ?? [];
+  const originalGeneratedPt =
+    activeGeneratedPath?.fullPortugueseMessage ??
+    reply?.fullPortugueseMessage ??
+    "";
   const displayedEditablePt = activeGeneratedPath
     ? editedPtByPath[activeGeneratedPath.pathId] ??
       activeGeneratedPath.fullPortugueseMessage
     : editablePt;
+  const isPtEdited =
+    Boolean(reply) &&
+    displayedEditablePt.trim() !== "" &&
+    displayedEditablePt.trim() !== originalGeneratedPt.trim();
 
   const updateDisplayedEditablePt = (nextValue: string) => {
     if (activeGeneratedPath) {
@@ -213,38 +217,6 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     }
   }, [prefillInput, onClearPrefill]);
 
-  useEffect(() => {
-    if (loadedReply) {
-      setInput(loadedReply.rawInput);
-      const parsed = parseShopeeOrderPaste(loadedReply.rawInput);
-      setDetectedOrderSn(parsed.orderSn ?? null);
-      setDetectedAmount(parsed.productAmount ?? null);
-      setDetectedVoucherTier(parsed.voucherAmount ?? "");
-      setCarrierName(parsed.carrierName ?? "");
-      setTrackingNumber(loadedReply.trackingNumber || parsed.trackingNumber || "");
-      setLastUpdateDate(parsed.lastUpdateDate ?? "");
-      setEstimatedDate(loadedReply.estimatedDate || parsed.estimatedDate || "");
-      setLatestStatus(parsed.latestStatus ?? "");
-      setIssueTopic(parsed.cxConcern ?? "");
-      setTone(loadedReply.tone);
-      setReply(loadedReply.reply);
-      setEditablePt(loadedReply.reply.fullPortugueseMessage);
-
-      if (loadedReply.reply.pathReplies?.length) {
-        const ptMap: Record<string, string> = {};
-        for (const p of loadedReply.reply.pathReplies) {
-          ptMap[p.pathId] = p.fullPortugueseMessage;
-        }
-        setEditedPtByPath(ptMap);
-        setOutputPathId(loadedReply.reply.pathReplies[0].pathId);
-      } else {
-        setEditedPtByPath({});
-        setOutputPathId(null);
-      }
-      setError(null);
-    }
-  }, [loadedReply]);
-
   const markCopied = (key: string) => {
     setCopiedId(key);
     window.setTimeout(() => {
@@ -262,7 +234,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
     setIsLoading(true);
     setError(null);
-    setSavedFlag(false);
+    setAppliedRuleChanges([]);
+    setPendingLearnedUpdates([]);
+    setLearnNotice(null);
 
     try {
       const requestedPaths = activeScenario?.paths?.length
@@ -301,9 +275,11 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             : undefined,
           requestedPaths,
           customStoreRules: storeRules?.map((r) => ({
+            id: r.id,
             topic: r.topic,
             english: r.english,
             portuguese: r.portuguese,
+            isPrimary: r.isPrimary,
           })),
         }),
       });
@@ -331,12 +307,85 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         setEditedPtByPath({});
         setOutputPathId(null);
       }
+
+      const learned = Array.isArray(generated.learnedRuleUpdates)
+        ? generated.learnedRuleUpdates.filter(
+            (u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim()
+          )
+        : [];
+      if (autoLearnRules && learned.length > 0) {
+        if (isSignedIn) {
+          const applied = await onApplyLearnedRules(learned);
+          setAppliedRuleChanges(applied);
+        } else {
+          setPendingLearnedUpdates(learned);
+        }
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "An unexpected error occurred.";
       setError(message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLearnFromEdit = async () => {
+    if (!reply || !isPtEdited) return;
+    if (!isSignedIn) {
+      onSignIn();
+      return;
+    }
+
+    setIsLearningFromEdit(true);
+    setLearnNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/learn-rule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawInput: input.trim(),
+          originalPortuguese: originalGeneratedPt,
+          editedPortuguese: displayedEditablePt.trim(),
+          detectedScenario: reply.detectedScenario,
+          customStoreRules: storeRules?.map((r) => ({
+            id: r.id,
+            topic: r.topic,
+            english: r.english,
+            portuguese: r.portuguese,
+            isPrimary: r.isPrimary,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Unable to extract Store Rule update.");
+      }
+
+      const learned = Array.isArray(data?.learnedRuleUpdates)
+        ? (data.learnedRuleUpdates as LearnedRuleUpdate[])
+        : [];
+      if (learned.length === 0) {
+        setLearnNotice(
+          "Your edit looks order-specific or cosmetic — no reusable Store Rule change was needed."
+        );
+        return;
+      }
+
+      const applied = await onApplyLearnedRules(learned);
+      if (applied.length > 0) {
+        setAppliedRuleChanges((prev) => [...prev, ...applied]);
+        setLearnNotice(null);
+      } else {
+        setLearnNotice("Store Rules already reflect this guidance.");
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to learn from your edit."
+      );
+    } finally {
+      setIsLearningFromEdit(false);
     }
   };
 
@@ -361,7 +410,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     setEditedPtByPath({});
     setEditablePt("");
     setError(null);
-    setSavedFlag(false);
+    setAppliedRuleChanges([]);
+    setPendingLearnedUpdates([]);
+    setLearnNotice(null);
   };
 
   const handleCopyFullPt = async () => {
@@ -380,37 +431,6 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const handleCopyRow = async (idx: number, text: string) => {
     const ok = await copyToClipboard(text);
     if (ok) markCopied(`row-${idx}`);
-  };
-
-  const handleSave = async () => {
-    if (!reply) return;
-    if (!isSignedIn) {
-      onSignIn();
-      return;
-    }
-    const updatedPathReplies = reply.pathReplies?.map((p) => ({
-      ...p,
-      fullPortugueseMessage:
-        editedPtByPath[p.pathId] ?? p.fullPortugueseMessage,
-    }));
-
-    const ok = await onSaveToHistory({
-      rawInput: input.trim(),
-      trackingNumber: trackingNumber.trim() || undefined,
-      estimatedDate: estimatedDate.trim() || undefined,
-      tone,
-      reply: {
-        ...reply,
-        policySummary: displayedPolicySummary || reply.policySummary,
-        rows: displayedRows.length > 0 ? displayedRows : reply.rows,
-        fullPortugueseMessage: displayedEditablePt,
-        pathReplies: updatedPathReplies,
-      },
-    });
-    if (ok) {
-      setSavedFlag(true);
-      window.setTimeout(() => setSavedFlag(false), 2200);
-    }
   };
 
   const quickPresets = [
@@ -775,10 +795,15 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
-            <p className="text-xs text-slate-500">
-              Store rules enforced: Shopee Guarantee assurance, no direct store refunds, and{" "}
-              <span className="font-medium text-slate-700">Devolução/Reembolso</span> guidance.
-            </p>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoLearnRules}
+                onChange={(e) => setAutoLearnRules(e.target.checked)}
+                className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
+              />
+              Auto-learn &amp; update Store Rules from new instructions while generating
+            </label>
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <div className="flex items-center gap-2">
                 <label
@@ -888,24 +913,6 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                   Continue in Chat Flow
                 </button>
               )}
-
-              <button
-                type="button"
-                onClick={handleSave}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                {savedFlag ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    Saved
-                  </>
-                ) : (
-                  <>
-                    <Bookmark className="w-3.5 h-3.5" />
-                    Save Case
-                  </>
-                )}
-              </button>
 
               <button
                 type="button"
@@ -1027,18 +1034,33 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             </table>
           </div>
 
-          {/* Editable Full Portuguese Message Preview */}
+          {/* Editable Full Portuguese Message Preview + Learn from Edit */}
           <div className="p-5 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-2.5">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <label
                 htmlFor="full-pt-preview"
                 className="text-xs font-semibold text-slate-700"
               >
                 Ready-to-Send Portuguese Message (editable before copying)
               </label>
-              <span className="text-xs text-slate-500 tabular-nums">
-                {displayedEditablePt.length} chars
-              </span>
+              <div className="flex items-center gap-3">
+                {isPtEdited && (
+                  <button
+                    type="button"
+                    disabled={isLearningFromEdit}
+                    onClick={() => void handleLearnFromEdit()}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white border border-[#EE4D2D]/40 rounded-md hover:bg-orange-50 disabled:opacity-60 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {isLearningFromEdit
+                      ? "Learning Rule..."
+                      : "Learn Rule from Edit"}
+                  </button>
+                )}
+                <span className="text-xs text-slate-500 tabular-nums">
+                  {displayedEditablePt.length} chars
+                </span>
+              </div>
             </div>
             <textarea
               id="full-pt-preview"
@@ -1047,7 +1069,58 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               onChange={(e) => updateDisplayedEditablePt(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
             />
+            {learnNotice && (
+              <p className="text-xs text-slate-600">{learnNotice}</p>
+            )}
           </div>
+
+          {/* Learned & Updated Store Rules Feedback */}
+          {appliedRuleChanges.length > 0 && (
+            <div className="px-5 sm:px-6 py-4 bg-emerald-50/70 border-t border-emerald-200 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                  Learned &amp; Synced to Cloud Store Rules ({appliedRuleChanges.length})
+                </div>
+                {onOpenStoreRules && (
+                  <button
+                    type="button"
+                    onClick={onOpenStoreRules}
+                    className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
+                  >
+                    View in Store Rules →
+                  </button>
+                )}
+              </div>
+              <ul className="space-y-1 text-xs text-emerald-900">
+                {appliedRuleChanges.map((change) => (
+                  <li key={`${change.ruleId}-${change.action}`}>
+                    <span className="font-semibold uppercase text-[11px] mr-1.5">
+                      [{change.action === "create" ? "New Rule" : "Updated Rule"}]
+                    </span>
+                    <span className="font-medium">{change.topic}</span>
+                    {change.reason ? ` — ${change.reason}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {pendingLearnedUpdates.length > 0 && !isSignedIn && (
+            <div className="px-5 sm:px-6 py-3.5 bg-orange-50/80 border-t border-orange-200 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-slate-800">
+                Detected {pendingLearnedUpdates.length} new/updated Store Rule(s) from this case (
+                {pendingLearnedUpdates.map((u) => u.topic).join(", ")}). Sign in to save them to Cloud Store Rules.
+              </p>
+              <button
+                type="button"
+                onClick={onSignIn}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-[#EE4D2D] hover:bg-[#d94123] rounded-lg cursor-pointer"
+              >
+                Sign in to Save Rule
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>

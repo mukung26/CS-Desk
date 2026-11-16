@@ -58,6 +58,23 @@ export interface GeneratedPathReply {
   fullPortugueseMessage: string;
 }
 
+export interface LearnedRuleUpdate {
+  action: "create" | "update";
+  existingRuleId?: string;
+  topic: string;
+  english: string;
+  portuguese: string;
+  reason: string;
+  isPrimary: boolean;
+}
+
+export interface AppliedRuleChange {
+  action: "create" | "update";
+  ruleId: string;
+  topic: string;
+  reason: string;
+}
+
 export interface GeneratedReply {
   detectedScenario: string;
   category: string;
@@ -66,16 +83,7 @@ export interface GeneratedReply {
   fullEnglishMessage: string;
   fullPortugueseMessage: string;
   pathReplies?: GeneratedPathReply[];
-}
-
-export interface SavedCaseEntry {
-  id: string;
-  createdAt: string;
-  rawInput: string;
-  trackingNumber?: string;
-  estimatedDate?: string;
-  tone: ToneOption;
-  reply: GeneratedReply;
+  learnedRuleUpdates?: LearnedRuleUpdate[];
 }
 
 export interface ProbingQuestion {

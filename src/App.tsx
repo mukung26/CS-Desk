@@ -9,18 +9,16 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { INITIAL_SCENARIOS } from "./data/scenarios";
 import { DEFAULT_STORE_RULES } from "./data/defaultStoreRules";
 import {
+  AppliedRuleChange,
   ChatFlowSessionEntry,
-  GeneratedReply,
-  SavedCaseEntry,
+  LearnedRuleUpdate,
   ScenarioCategory,
   ScriptScenario,
   StoreRuleEntry,
-  ToneOption,
 } from "./types/cs";
 import { ReplyGenerator } from "./components/ReplyGenerator";
 import { ChatFlow } from "./components/ChatFlow";
 import { ScriptLibrary } from "./components/ScriptLibrary";
-import { SavedHistory } from "./components/SavedHistory";
 import { StoreRules } from "./components/StoreRules";
 import {
   auth,
@@ -28,27 +26,24 @@ import {
   signOutFirebase,
 } from "./firebase";
 import {
-  clearAllCloudSavedCases,
+  applyLearnedStoreRuleUpdates,
   createCloudCustomScript,
-  createCloudSavedCase,
   createCloudStoreRule,
   deleteCloudChatFlowSession,
   deleteCloudCustomScript,
-  deleteCloudSavedCase,
   deleteCloudStoreRule,
   resetCloudStoreRulesToDefaults,
   saveCloudChatFlowSession,
   seedDefaultCloudStoreRulesIfEmpty,
   subscribeChatFlowSessions,
   subscribeCustomScripts,
-  subscribeSavedCases,
   subscribeStoreRules,
   updateCloudCustomScript,
   updateCloudStoreRule,
   upsertCloudUserAccount,
 } from "./services/cloudStorage";
 
-type ActiveTab = "generator" | "chatflow" | "library" | "history" | "rules";
+type ActiveTab = "generator" | "chatflow" | "library" | "rules";
 
 const CATEGORY_FILTERS: ScenarioCategory[] = [
   ScenarioCategory.ALL,
@@ -77,20 +72,12 @@ export default function App() {
   );
 
   const [customScenarios, setCustomScenarios] = useState<ScriptScenario[]>([]);
-  const [savedHistory, setSavedHistory] = useState<SavedCaseEntry[]>([]);
   const [savedChatFlows, setSavedChatFlows] = useState<ChatFlowSessionEntry[]>([]);
   const [storeRules, setStoreRules] =
     useState<StoreRuleEntry[]>(DEFAULT_STORE_RULES);
 
   const [prefillInput, setPrefillInput] = useState("");
   const [chatFlowPrefill, setChatFlowPrefill] = useState("");
-  const [loadedReply, setLoadedReply] = useState<{
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  } | null>(null);
   const [generatorResetKey, setGeneratorResetKey] = useState(0);
 
   useEffect(() => {
@@ -105,7 +92,6 @@ export default function App() {
     if (!authReady) return;
     if (!user) {
       setCustomScenarios([]);
-      setSavedHistory([]);
       setSavedChatFlows([]);
       setStoreRules(DEFAULT_STORE_RULES);
       setIsSyncingCloud(false);
@@ -116,11 +102,10 @@ export default function App() {
     setCloudError(null);
 
     let scriptsLoaded = false;
-    let casesLoaded = false;
     let rulesLoaded = false;
     let flowsLoaded = false;
     const markDone = () => {
-      if (scriptsLoaded && casesLoaded && rulesLoaded && flowsLoaded) {
+      if (scriptsLoaded && rulesLoaded && flowsLoaded) {
         setIsSyncingCloud(false);
       }
     };
@@ -148,12 +133,6 @@ export default function App() {
       }
     );
 
-    const unsubCases = subscribeSavedCases(user.uid, (items) => {
-      casesLoaded = true;
-      setSavedHistory(items);
-      markDone();
-    });
-
     const unsubRules = subscribeStoreRules(user.uid, (items) => {
       rulesLoaded = true;
       setStoreRules(items.length > 0 ? items : DEFAULT_STORE_RULES);
@@ -168,7 +147,6 @@ export default function App() {
 
     return () => {
       unsubScripts();
-      unsubCases();
       unsubRules();
       unsubFlows();
     };
@@ -180,9 +158,27 @@ export default function App() {
       await signInWithGooglePopup();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sign-in cancelled.";
-      if (!msg.includes("popup-closed-by-user")) {
-        setCloudError("Google Sign-In failed. Please allow popups and try again.");
+      if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
+        return;
       }
+      if (msg.includes("unauthorized-domain")) {
+        const host = window.location.hostname;
+        setCloudError(
+          `Domain "${host}" is not authorized for Google Sign-In yet. Add "${host}" in Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+        return;
+      }
+      if (msg.includes("popup-blocked")) {
+        setCloudError("Sign-in popup was blocked by your browser. Please allow popups for this site and try again.");
+        return;
+      }
+      if (msg.includes("operation-not-allowed")) {
+        setCloudError(
+          "Google Sign-In provider is disabled in Firebase. Enable Google under Firebase Console → Authentication → Sign-in method."
+        );
+        return;
+      }
+      setCloudError(`Google Sign-In failed (${msg}).`);
     }
   };
 
@@ -211,29 +207,21 @@ export default function App() {
     });
   }, [allScenarios, categoryFilter, sidebarSearch]);
 
-  const handleSaveToHistory = async (entry: {
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  }): Promise<boolean> => {
-    if (!user) {
-      await handleSignIn();
-      return false;
-    }
+  const handleApplyLearnedRules = async (
+    updates: LearnedRuleUpdate[]
+  ): Promise<AppliedRuleChange[]> => {
+    if (!user || updates.length === 0) return [];
     setCloudError(null);
     try {
-      await createCloudSavedCase(user.uid, entry);
-      return true;
+      return await applyLearnedStoreRuleUpdates(user.uid, storeRules, updates);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save case.";
+      const msg = err instanceof Error ? err.message : "Failed to update Store Rules.";
       setCloudError(
         msg.includes("Quota exceeded")
           ? "Cloud Firestore daily free-tier quota exceeded. Quota resets tomorrow."
-          : "Unable to save case to Cloud Firestore."
+          : "Unable to save learned Store Rule updates to Cloud Firestore."
       );
-      return false;
+      return [];
     }
   };
 
@@ -294,7 +282,6 @@ export default function App() {
   };
 
   const handleNewCase = () => {
-    setLoadedReply(null);
     setPrefillInput("");
     setChatFlowPrefill("");
     setGeneratorResetKey((k) => k + 1);
@@ -372,17 +359,6 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("history")}
-            className={`py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeTab === "history"
-                ? "border-[#EE4D2D] text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            Saved History
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveTab("rules")}
             className={`py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === "rules"
@@ -444,7 +420,6 @@ export default function App() {
               ["generator", "Generator"],
               ["chatflow", "Chat Flow"],
               ["library", "Scripts"],
-              ["history", "History"],
               ["rules", "Rules"],
             ] as Array<[ActiveTab, string]>
           ).map(([tabKey, label]) => (
@@ -572,8 +547,8 @@ export default function App() {
                 <span>
                   Sign in with Google to save &amp; sync your{" "}
                   <strong>Script Library</strong>,{" "}
-                  <strong>Saved History</strong>, and{" "}
-                  <strong>Store Rules</strong> in Cloud Firestore across any PC.
+                  <strong>Chat Flow</strong>, and{" "}
+                  <strong>Store Rules</strong> (including auto-learned rules) in Cloud Firestore across any PC.
                 </span>
               </div>
               <button
@@ -602,12 +577,12 @@ export default function App() {
               onSignIn={() => void handleSignIn()}
               prefillInput={prefillInput}
               onClearPrefill={() => setPrefillInput("")}
-              onSaveToHistory={handleSaveToHistory}
+              onApplyLearnedRules={handleApplyLearnedRules}
+              onOpenStoreRules={() => setActiveTab("rules")}
               onOpenInChatFlow={(rawText) => {
                 setChatFlowPrefill(rawText);
                 setActiveTab("chatflow");
               }}
-              loadedReply={loadedReply}
             />
           )}
 
@@ -619,7 +594,6 @@ export default function App() {
               onSignIn={() => void handleSignIn()}
               prefillInput={chatFlowPrefill}
               onClearPrefill={() => setChatFlowPrefill("")}
-              onSaveToHistory={handleSaveToHistory}
               savedSessions={savedChatFlows}
               onSaveChatFlowSession={async (existingFlowId, session) => {
                 if (!user) return null;
@@ -639,39 +613,12 @@ export default function App() {
               onSignIn={() => void handleSignIn()}
               onSelectScenario={setSelectedScenarioId}
               onUseInGenerator={(sample) => {
-                setLoadedReply(null);
                 setPrefillInput(sample);
                 setActiveTab("generator");
               }}
               onAddCustomScenario={handleAddCustomScenario}
               onUpdateCustomScenario={handleUpdateCustomScenario}
               onDeleteCustomScenario={handleDeleteCustomScenario}
-            />
-          )}
-
-          {activeTab === "history" && (
-            <SavedHistory
-              entries={savedHistory}
-              isSignedIn={Boolean(user)}
-              isSyncing={isSyncingCloud}
-              onSignIn={() => void handleSignIn()}
-              onLoadEntry={(entry) => {
-                setLoadedReply({
-                  rawInput: entry.rawInput,
-                  trackingNumber: entry.trackingNumber,
-                  estimatedDate: entry.estimatedDate,
-                  tone: entry.tone,
-                  reply: entry.reply,
-                });
-                setActiveTab("generator");
-              }}
-              onDeleteEntry={(id) => {
-                if (user) void deleteCloudSavedCase(user.uid, id);
-              }}
-              onClearAll={() => {
-                if (user) void clearAllCloudSavedCases(user.uid);
-              }}
-              onGoToGenerator={() => setActiveTab("generator")}
             />
           )}
 

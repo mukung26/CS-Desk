@@ -71,7 +71,16 @@ FORMATTING RULES:
 - Keep each row focused on one logical part (e.g., Greeting, Current Status, Policy / Action, Assurance, Closing).
 - Mark rows that contain critical policy rules or required assurances (such as Return/Refund instructions, Shopee Guarantee assurances, or courier follow-up) with "isKeyRule": true.
 - Incorporate any real Order SN, product name, carrier name, city/state, tracking code, status, voucher tier, or dates provided in the input instead of leaving generic placeholders. Only use bracketed placeholders like [DATA] / [DATE] or [RASTREAMENTO] / [TRACKING] when that information is completely missing.
-- Produce "fullEnglishMessage" and "fullPortugueseMessage" by joining the rows naturally with spacing suitable for pasting into Shopee Chat.`;
+- Produce "fullEnglishMessage" and "fullPortugueseMessage" by joining the rows naturally with spacing suitable for pasting into Shopee Chat.
+
+SELF-LEARNING STORE RULES ("learnedRuleUpdates"):
+- Compare the agent's case input, trailing agent instructions, and edge-case resolutions against the provided "Active Store CS Rules (from Cloud Store Rules)".
+- Return an entry in "learnedRuleUpdates" ONLY when:
+  1. The agent gives a NEW reusable store policy, workflow instruction, link, threshold, or handling rule that is NOT already captured in Active Store CS Rules ("action": "create"), OR
+  2. The agent modifies, corrects, or refines an EXISTING rule listed in Active Store CS Rules ("action": "update", referencing its exact "existingRuleId").
+- NEVER emit "learnedRuleUpdates" for routine order-specific details (like Order SNs, tracking numbers, customer names, prices, dates) or when existing rules already cover the scenario.
+- For normal routine cases already covered by existing rules, return an empty array: [].
+- Every learned rule MUST be reusable across future orders (use clear English policy summary + warm PT-BR customer guidance without order-specific IDs).`;
 
 export const CHAT_FLOW_INSTRUCTION = `
 LIVE CHAT FLOW WITH PROBING QUESTIONS & CHOICES MODE:
@@ -105,9 +114,11 @@ export interface RequestedPathInput {
 }
 
 export interface StoreRuleContext {
+  id?: string;
   topic: string;
   english: string;
   portuguese: string;
+  isPrimary?: boolean;
 }
 
 export interface GenerateReplyRequest {
@@ -298,7 +309,10 @@ export function buildGenerateReplyPromptAndSchema(
       : null,
     Array.isArray(body.customStoreRules) && body.customStoreRules.length > 0
       ? `Active Store CS Rules (from Cloud Store Rules):\n${body.customStoreRules
-          .map((r) => `- ${r.topic}: ${r.english} (PT-BR: ${r.portuguese})`)
+          .map(
+            (r) =>
+              `- ${r.id ? `[id=${r.id}] ` : ""}${r.topic}: ${r.english} (PT-BR: ${r.portuguese})`
+          )
           .join("\n")}`
       : null,
     body.tone?.trim()
@@ -339,6 +353,52 @@ export function buildGenerateReplyPromptAndSchema(
       description:
         "The combined Portuguese sentences formatted as a single copy-pasteable Shopee chat message.",
     },
+    learnedRuleUpdates: {
+      type: "ARRAY",
+      description:
+        "Optional new or updated reusable Store CS Rules learned from agent instructions or edge-case policy refinements in this input. Return [] if existing rules already cover it.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          action: {
+            type: "STRING",
+            enum: ["create", "update"],
+          },
+          existingRuleId: {
+            type: "STRING",
+            description:
+              "Required when action is 'update': exact rule id from Active Store CS Rules.",
+          },
+          topic: {
+            type: "STRING",
+            description: "Concise policy area title (max 120 chars).",
+          },
+          english: {
+            type: "STRING",
+            description: "Reusable English summary of the store rule.",
+          },
+          portuguese: {
+            type: "STRING",
+            description: "Reusable PT-BR customer guidance for this rule.",
+          },
+          reason: {
+            type: "STRING",
+            description: "Short explanation of why this rule was added or updated.",
+          },
+          isPrimary: {
+            type: "BOOLEAN",
+          },
+        },
+        required: [
+          "action",
+          "topic",
+          "english",
+          "portuguese",
+          "reason",
+          "isPrimary",
+        ],
+      },
+    },
   };
 
   const requiredFields = [
@@ -348,6 +408,7 @@ export function buildGenerateReplyPromptAndSchema(
     "rows",
     "fullEnglishMessage",
     "fullPortugueseMessage",
+    "learnedRuleUpdates",
   ];
 
   if (requestedPaths.length > 0) {
@@ -540,6 +601,85 @@ export function buildChatFlowPromptAndSchema(
   return {
     contextLines,
     systemInstruction: `${SYSTEM_INSTRUCTION}\n\n${CHAT_FLOW_INSTRUCTION}`,
+    responseSchema,
+  };
+}
+
+export interface LearnRuleRequest {
+  rawInput: string;
+  originalPortuguese: string;
+  editedPortuguese: string;
+  detectedScenario?: string;
+  customStoreRules?: StoreRuleContext[];
+}
+
+export function buildLearnRulePromptAndSchema(body: LearnRuleRequest) {
+  const rulesText =
+    Array.isArray(body.customStoreRules) && body.customStoreRules.length > 0
+      ? body.customStoreRules
+          .map(
+            (r) =>
+              `- ${r.id ? `[id=${r.id}] ` : ""}${r.topic}: ${r.english} (PT-BR: ${r.portuguese})`
+          )
+          .join("\n")
+      : "None provided yet.";
+
+  const contextLines = [
+    `Active Store CS Rules:\n${rulesText}`,
+    body.detectedScenario?.trim()
+      ? `Detected Scenario: ${body.detectedScenario.trim()}`
+      : null,
+    `Agent Case Input:\n${body.rawInput.trim()}`,
+    `Original Generated PT-BR Reply:\n${body.originalPortuguese.trim()}`,
+    `Agent Edited PT-BR Reply:\n${body.editedPortuguese.trim()}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const systemInstruction = `You are a Store Policy Analyst for a Shopee Brazil seller CS team.
+Compare the Agent's Case Input and their Edited PT-BR Reply against the Original Generated Reply and Active Store CS Rules.
+Extract 1 (or up to 2) reusable policy updates or new rules that the agent introduced in their edit or instructions.
+- If the edit updates or corrects an existing rule in Active Store CS Rules, set "action": "update" and include its exact "existingRuleId".
+- If it introduces a brand-new reusable store rule, set "action": "create".
+- Strip out one-off order IDs, tracking numbers, customer names, or dates so the rule is clean and reusable for all future orders.
+- If the edit was purely cosmetic/typo with no reusable policy rule change, return an empty array [].`;
+
+  const responseSchema: Record<string, unknown> = {
+    type: "OBJECT",
+    properties: {
+      learnedRuleUpdates: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            action: {
+              type: "STRING",
+              enum: ["create", "update"],
+            },
+            existingRuleId: { type: "STRING" },
+            topic: { type: "STRING" },
+            english: { type: "STRING" },
+            portuguese: { type: "STRING" },
+            reason: { type: "STRING" },
+            isPrimary: { type: "BOOLEAN" },
+          },
+          required: [
+            "action",
+            "topic",
+            "english",
+            "portuguese",
+            "reason",
+            "isPrimary",
+          ],
+        },
+      },
+    },
+    required: ["learnedRuleUpdates"],
+  };
+
+  return {
+    contextLines,
+    systemInstruction,
     responseSchema,
   };
 }

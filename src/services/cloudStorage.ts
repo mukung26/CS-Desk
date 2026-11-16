@@ -17,10 +17,10 @@ import { User } from "firebase/auth";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { DEFAULT_STORE_RULES } from "../data/defaultStoreRules";
 import {
+  AppliedRuleChange,
   ChatFlowSessionEntry,
   ChatFlowTurn,
-  GeneratedReply,
-  SavedCaseEntry,
+  LearnedRuleUpdate,
   ScenarioCategory,
   ScriptRow,
   ScriptScenario,
@@ -181,158 +181,81 @@ export async function deleteCloudCustomScript(
 }
 
 // ==========================================
-// 2. CLOUD SAVED CASES (Saved History)
+// 2. AUTO-APPLY LEARNED STORE RULES
 // ==========================================
 
-export function subscribeSavedCases(
+export async function applyLearnedStoreRuleUpdates(
   userId: string,
-  onData: (cases: SavedCaseEntry[]) => void
-) {
-  const path = `users/${userId}/savedCases`;
-  const q = query(collection(db, path), where("ownerId", "==", userId));
+  existingRules: StoreRuleEntry[],
+  updates: LearnedRuleUpdate[]
+): Promise<AppliedRuleChange[]> {
+  const validUpdates = updates
+    .filter((u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim())
+    .slice(0, 3);
 
-  return onSnapshot(
-    q,
-    (snap) => {
-      const items = snap.docs
-        .map((d) => {
-          const data = d.data();
-          const createdAt = timestampToIso(data.createdAt);
-          return {
-            createdMs:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Date.parse(createdAt) || 0,
-            entry: {
-              id: d.id,
-              createdAt,
-              rawInput: String(data.rawInput || ""),
-              trackingNumber: data.trackingNumber
-                ? String(data.trackingNumber)
-                : undefined,
-              estimatedDate: data.estimatedDate
-                ? String(data.estimatedDate)
-                : undefined,
-              tone: (data.tone as ToneOption) || ToneOption.STANDARD,
-              reply: data.reply as GeneratedReply,
-            } satisfies SavedCaseEntry,
-          };
-        })
-        .sort((a, b) => b.createdMs - a.createdMs)
-        .map((x) => x.entry);
+  if (validUpdates.length === 0) return [];
 
-      onData(items);
-    },
-    (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-    }
+  const changes: AppliedRuleChange[] = [];
+  let nextSortOrder = existingRules.reduce(
+    (max, r) => Math.max(max, r.sortOrder + 1),
+    existingRules.length
   );
-}
 
-export async function createCloudSavedCase(
-  userId: string,
-  entry: {
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  }
-): Promise<string> {
-  const caseId = sanitizeId(`case-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  const path = `users/${userId}/savedCases/${caseId}`;
+  for (const item of validUpdates) {
+    const cleanTopic = clamp(item.topic, 160);
+    const cleanEnglish = clamp(item.english, 2000);
+    const cleanPortuguese = clamp(item.portuguese, 2000);
+    if (!cleanTopic || !cleanEnglish || !cleanPortuguese) continue;
 
-  const safeRows = (entry.reply.rows?.length ? entry.reply.rows : [
-    {
-      section: "Reply",
-      english: entry.reply.fullEnglishMessage || "-",
-      portuguese: entry.reply.fullPortugueseMessage || "-",
-      isKeyRule: false,
-    },
-  ])
-    .slice(0, 40)
-    .map((r) => ({
-      section: clamp(r.section || "Section", 120),
-      english: clamp(r.english || "-", 2000),
-      portuguese: clamp(r.portuguese || "-", 2000),
-      isKeyRule: Boolean(r.isKeyRule),
-    }));
+    const matchedById = item.existingRuleId
+      ? existingRules.find((r) => r.id === item.existingRuleId)
+      : undefined;
+    const matchedByTopic = existingRules.find(
+      (r) => r.topic.toLowerCase().trim() === cleanTopic.toLowerCase()
+    );
+    const target = matchedById ?? matchedByTopic;
 
-  const safeReply: Record<string, unknown> = {
-    detectedScenario: clamp(entry.reply.detectedScenario || "General Inquiry", 200),
-    category: clamp(entry.reply.category || "General", 80),
-    policySummary: clamp(entry.reply.policySummary || "", 1000),
-    rows: safeRows,
-    fullEnglishMessage: clamp(entry.reply.fullEnglishMessage || "", 8000),
-    fullPortugueseMessage: clamp(entry.reply.fullPortugueseMessage || "", 8000),
-  };
+    if (target) {
+      const sameContent =
+        target.topic.trim() === cleanTopic &&
+        target.english.trim() === cleanEnglish &&
+        target.portuguese.trim() === cleanPortuguese &&
+        target.isPrimary === Boolean(item.isPrimary);
+      if (sameContent) continue;
 
-  if (entry.reply.pathReplies && entry.reply.pathReplies.length > 0) {
-    safeReply.pathReplies = entry.reply.pathReplies.slice(0, 10).map((p) => ({
-      pathId: clamp(p.pathId, 100),
-      pathLabel: clamp(p.pathLabel, 160),
-      ...(p.cxTrigger ? { cxTrigger: clamp(p.cxTrigger, 400) } : {}),
-      policySummary: clamp(p.policySummary || "", 1000),
-      rows: (p.rows || []).slice(0, 30).map((r) => ({
-        section: clamp(r.section || "Section", 120),
-        english: clamp(r.english || "-", 2000),
-        portuguese: clamp(r.portuguese || "-", 2000),
-        isKeyRule: Boolean(r.isKeyRule),
-      })),
-      fullEnglishMessage: clamp(p.fullEnglishMessage || "", 8000),
-      fullPortugueseMessage: clamp(p.fullPortugueseMessage || "", 8000),
-    }));
+      await updateCloudStoreRule(userId, target.id, {
+        topic: cleanTopic,
+        english: cleanEnglish,
+        portuguese: cleanPortuguese,
+        isPrimary: Boolean(item.isPrimary),
+        sortOrder: target.sortOrder,
+      });
+
+      changes.push({
+        action: "update",
+        ruleId: target.id,
+        topic: cleanTopic,
+        reason: item.reason || "Updated from Reply Generator",
+      });
+    } else {
+      const newRuleId = await createCloudStoreRule(userId, {
+        topic: cleanTopic,
+        english: cleanEnglish,
+        portuguese: cleanPortuguese,
+        isPrimary: Boolean(item.isPrimary),
+        sortOrder: Math.min(1000, nextSortOrder++),
+      });
+
+      changes.push({
+        action: "create",
+        ruleId: newRuleId,
+        topic: cleanTopic,
+        reason: item.reason || "Learned from Reply Generator",
+      });
+    }
   }
 
-  const payload: Record<string, unknown> = {
-    ownerId: userId,
-    rawInput: clamp(entry.rawInput || "Order inquiry", 8000),
-    tone: entry.tone,
-    reply: safeReply,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-
-  if (entry.trackingNumber?.trim()) {
-    payload.trackingNumber = clamp(entry.trackingNumber, 80);
-  }
-  if (entry.estimatedDate?.trim()) {
-    payload.estimatedDate = clamp(entry.estimatedDate, 40);
-  }
-
-  try {
-    await setDoc(doc(db, path), payload);
-    return caseId;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
-}
-
-export async function deleteCloudSavedCase(
-  userId: string,
-  caseId: string
-): Promise<void> {
-  const safeId = sanitizeId(caseId);
-  const path = `users/${userId}/savedCases/${safeId}`;
-  try {
-    await deleteDoc(doc(db, path));
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
-}
-
-export async function clearAllCloudSavedCases(userId: string): Promise<void> {
-  const path = `users/${userId}/savedCases`;
-  try {
-    const q = query(collection(db, path), where("ownerId", "==", userId));
-    const snap = await getDocs(q);
-    if (snap.empty) return;
-    const batch = writeBatch(db);
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
+  return changes;
 }
 
 // ==========================================

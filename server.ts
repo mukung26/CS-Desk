@@ -6,8 +6,10 @@ import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import {
   buildChatFlowPromptAndSchema,
   buildGenerateReplyPromptAndSchema,
+  buildLearnRulePromptAndSchema,
   type ChatFlowRequest,
   type GenerateReplyRequest,
+  type LearnRuleRequest,
 } from "./shared/csPromptEngine.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -132,6 +134,45 @@ app.post("/api/generate-reply", async (req, res) => {
       return;
     }
 
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/learn-rule", async (req, res) => {
+  try {
+    const body = req.body as LearnRuleRequest;
+    if (!body?.editedPortuguese?.trim() || !body?.rawInput?.trim()) {
+      res.status(400).json({ error: "Provide the case input and edited reply to learn a rule." });
+      return;
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      res.status(500).json({
+        error: "GEMINI_API_KEY is not configured. Please add it in Settings > Secrets.",
+      });
+      return;
+    }
+
+    const { contextLines, systemInstruction, responseSchema } =
+      buildLearnRulePromptAndSchema(body);
+
+    const response = await generateContentWithFallback(contextLines, {
+      systemInstruction,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      responseMimeType: "application/json",
+      responseSchema,
+    });
+
+    const jsonText = (response.text ?? "").trim();
+    if (!jsonText) {
+      res.json({ learnedRuleUpdates: [] });
+      return;
+    }
+
+    res.json(JSON.parse(jsonText));
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to learn rule update.";
+    console.error("Error learning Shopee CS rule:", message);
     res.status(500).json({ error: message });
   }
 });

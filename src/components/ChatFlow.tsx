@@ -4,7 +4,6 @@ import {
   Check,
   Send,
   RotateCcw,
-  Bookmark,
   Table as TableIcon,
   AlertCircle,
   MessageSquare,
@@ -35,13 +34,6 @@ interface ChatFlowProps {
   onSignIn: () => void;
   prefillInput: string;
   onClearPrefill: () => void;
-  onSaveToHistory: (entry: {
-    rawInput: string;
-    trackingNumber?: string;
-    estimatedDate?: string;
-    tone: ToneOption;
-    reply: GeneratedReply;
-  }) => Promise<boolean>;
   savedSessions: ChatFlowSessionEntry[];
   onSaveChatFlowSession: (
     existingFlowId: string | null,
@@ -78,7 +70,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   onSignIn,
   prefillInput,
   onClearPrefill,
-  onSaveToHistory,
   savedSessions,
   onSaveChatFlowSession,
   onDeleteChatFlowSession,
@@ -110,7 +101,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [savedTurnId, setSavedTurnId] = useState<string | null>(null);
   const [cloudFlowSavedBadge, setCloudFlowSavedBadge] = useState(false);
 
   const applyOrderInputWithAutoParse = (
@@ -433,34 +423,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       setCloudFlowSavedBadge(true);
       window.setTimeout(() => setCloudFlowSavedBadge(false), 1800);
     }
-  };
-
-  const handleSaveTurn = async (turn: ChatFlowTurn) => {
-    if (!isSignedIn) {
-      onSignIn();
-      return;
-    }
-    const editedPt = editedPtByTurn[turn.id] ?? turn.fullPortugueseMessage;
-    const ok = await onSaveToHistory({
-      rawInput: `${orderInput.trim()}\n\n[Chat Flow Turn ${turn.turnNumber} - ${turn.cxLabel}]\n${turn.cxMessage}`.trim(),
-      trackingNumber: trackingNumber.trim() || undefined,
-      estimatedDate: estimatedDate.trim() || undefined,
-      tone,
-      reply: {
-        detectedScenario: turn.detectedScenario,
-        category: turn.category,
-        policySummary: turn.policySummary,
-        rows: turn.rows,
-        fullEnglishMessage: turn.fullEnglishMessage,
-        fullPortugueseMessage: editedPt,
-      },
-    });
-    if (ok) {
-      setSavedTurnId(turn.id);
-    }
-    window.setTimeout(() => {
-      setSavedTurnId((prev) => (prev === turn.id ? null : prev));
-    }, 2000);
   };
 
   const quickPresets = useMemo(
@@ -927,24 +889,6 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     <>
                       <TableIcon className="w-3.5 h-3.5" />
                       Copy Table
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSaveTurn(turn)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  {savedTurnId === turn.id ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      Saved
-                    </>
-                  ) : (
-                    <>
-                      <Bookmark className="w-3.5 h-3.5" />
-                      Save Turn
                     </>
                   )}
                 </button>

@@ -71,71 +71,6 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
-    function isValidSavedCase(data, userId) {
-      return data.keys().hasAll([
-          'ownerId',
-          'rawInput',
-          'tone',
-          'reply',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.keys().hasOnly([
-          'ownerId',
-          'rawInput',
-          'trackingNumber',
-          'estimatedDate',
-          'tone',
-          'reply',
-          'createdAt',
-          'updatedAt'
-        ])
-        && data.ownerId is string
-        && data.ownerId == userId
-        && isValidId(data.ownerId)
-        && data.rawInput is string
-        && data.rawInput.size() >= 1
-        && data.rawInput.size() <= 8000
-        && (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 80))
-        && (!('estimatedDate' in data) || (data.estimatedDate is string && data.estimatedDate.size() <= 40))
-        && data.tone in ['Standard Polite', 'Extra Empathetic', 'Firm Policy']
-        && data.reply is map
-        && data.reply.keys().hasAll([
-          'detectedScenario',
-          'category',
-          'policySummary',
-          'rows',
-          'fullEnglishMessage',
-          'fullPortugueseMessage'
-        ])
-        && data.reply.keys().hasOnly([
-          'detectedScenario',
-          'category',
-          'policySummary',
-          'rows',
-          'fullEnglishMessage',
-          'fullPortugueseMessage',
-          'pathReplies'
-        ])
-        && data.reply.detectedScenario is string
-        && data.reply.detectedScenario.size() <= 200
-        && data.reply.category is string
-        && data.reply.category.size() <= 80
-        && data.reply.policySummary is string
-        && data.reply.policySummary.size() <= 1000
-        && data.reply.rows is list
-        && data.reply.rows.size() >= 1
-        && data.reply.rows.size() <= 40
-        && data.reply.rows[0] is map
-        && data.reply.fullEnglishMessage is string
-        && data.reply.fullEnglishMessage.size() <= 8000
-        && data.reply.fullPortugueseMessage is string
-        && data.reply.fullPortugueseMessage.size() <= 8000
-        && (!('pathReplies' in data.reply) || (data.reply.pathReplies is list && data.reply.pathReplies.size() <= 10 && (data.reply.pathReplies.size() == 0 || data.reply.pathReplies[0] is map)))
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
     function isValidStoreRule(data, userId) {
       return data.keys().hasAll([
           'ownerId',
@@ -298,31 +233,6 @@ service cloud.firestore {
             'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(scriptId);
-      }
-
-      match /savedCases/{caseId} {
-        allow get: if isOwner(userId) && isValidId(caseId);
-        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
-        allow create: if isOwner(userId)
-          && isValidId(caseId)
-          && isValidSavedCase(incoming(), userId)
-          && incoming().createdAt == request.time
-          && incoming().updatedAt == request.time;
-        allow update: if isOwner(userId)
-          && isValidId(caseId)
-          && isValidSavedCase(incoming(), userId)
-          && incoming().ownerId == existing().ownerId
-          && incoming().createdAt == existing().createdAt
-          && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly([
-            'rawInput',
-            'trackingNumber',
-            'estimatedDate',
-            'tone',
-            'reply',
-            'updatedAt'
-          ]);
-        allow delete: if isOwner(userId) && isValidId(caseId);
       }
 
       match /storeRules/{ruleId} {
