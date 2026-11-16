@@ -141,8 +141,8 @@ app.post("/api/generate-reply", async (req, res) => {
 app.post("/api/learn-rule", async (req, res) => {
   try {
     const body = req.body as LearnRuleRequest;
-    if (!body?.editedPortuguese?.trim() || !body?.rawInput?.trim()) {
-      res.status(400).json({ error: "Provide the case input and edited reply to learn a rule." });
+    if (!body?.rawInput?.trim()) {
+      res.status(400).json({ error: "Provide the case input or instructions first to detect scenarios and rules." });
       return;
     }
 
@@ -165,13 +165,17 @@ app.post("/api/learn-rule", async (req, res) => {
 
     const jsonText = (response.text ?? "").trim();
     if (!jsonText) {
-      res.json({ learnedRuleUpdates: [] });
+      res.json({
+        analysisNote: "No new scenario or rule updates detected.",
+        learnedScriptUpdates: [],
+        learnedRuleUpdates: [],
+      });
       return;
     }
 
     res.json(JSON.parse(jsonText));
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to learn rule update.";
+    const message = err instanceof Error ? err.message : "Failed to learn scenario/rule update.";
     console.error("Error learning Shopee CS rule:", message);
     res.status(500).json({ error: message });
   }

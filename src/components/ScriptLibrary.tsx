@@ -31,6 +31,7 @@ interface ScriptLibraryProps {
   scenarios: ScriptScenario[];
   selectedScenarioId: string | null;
   isSignedIn: boolean;
+  isSyncing?: boolean;
   onSignIn: () => void;
   onSelectScenario: (id: string | null) => void;
   onUseInGenerator: (sampleInput: string) => void;
@@ -42,18 +43,21 @@ interface ScriptLibraryProps {
     scenario: Omit<ScriptScenario, "id" | "number">
   ) => void | Promise<void>;
   onDeleteCustomScenario: (id: string) => void | Promise<void>;
+  onResetDefaultScripts?: () => void | Promise<void>;
 }
 
 export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
   scenarios,
   selectedScenarioId,
   isSignedIn,
+  isSyncing,
   onSignIn,
   onSelectScenario,
   onUseInGenerator,
   onAddCustomScenario,
   onUpdateCustomScenario,
   onDeleteCustomScenario,
+  onResetDefaultScripts,
 }) => {
   const [pasteInput, setPasteInput] = useState("");
   const [detectedOrderSn, setDetectedOrderSn] = useState<string | null>(null);
@@ -280,6 +284,10 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
     );
     if (!newTitle.trim() || cleanedRows.length === 0) return;
 
+    const editingSource = editingScenarioId
+      ? scenarios.find((s) => s.id === editingScenarioId)
+      : undefined;
+
     const payload: Omit<ScriptScenario, "id" | "number"> = {
       title: newTitle.trim(),
       category: newCategory,
@@ -291,7 +299,14 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
         newSampleInput.trim() ||
         `${newTitle.trim()} > Customer needs help with this concern.`,
       rows: cleanedRows,
-      isCustom: true,
+      ...(editingSource?.paths ? { paths: editingSource.paths } : {}),
+      sortOrder: editingSource
+        ? editingSource.sortOrder ?? editingSource.number
+        : scenarios.reduce(
+            (max, s) => Math.max(max, (s.sortOrder ?? s.number) + 1),
+            scenarios.length + 1
+          ),
+      isCustom: editingSource ? editingSource.isCustom : true,
     };
 
     setIsSavingScript(true);
@@ -329,14 +344,22 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               Shopee CS Quick Script Library
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Paste{" "}
-              <span className="font-mono text-xs text-slate-700">
-                Order / Product Info &gt; Customer Concern
-              </span>{" "}
-              or a full Shopee Seller Center dump to auto-fill every script table in real time.
+              {isSignedIn
+                ? isSyncing
+                  ? "Syncing your Script Library from Cloud Firestore..."
+                  : `${scenarios.length} cloud-synced scripts. Paste an order & CX concern below to auto-fill placeholders in real time.`
+                : (
+                  <>
+                    Paste{" "}
+                    <span className="font-mono text-xs text-slate-700">
+                      Order / Product Info &gt; Customer Concern
+                    </span>{" "}
+                    or a full Shopee Seller Center dump to auto-fill every script table in real time.
+                  </>
+                )}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {selectedScenarioId && (
               <button
                 type="button"
@@ -354,6 +377,15 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
               Clear
             </button>
+            {isSignedIn && onResetDefaultScripts && (
+              <button
+                type="button"
+                onClick={() => void onResetDefaultScripts()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Restore Defaults
+              </button>
+            )}
             {!isSignedIn ? (
               <button
                 type="button"
@@ -794,25 +826,23 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openEditOrDuplicateForm(scenario, true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit
+                  </button>
                   {scenario.isCustom ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => openEditOrDuplicateForm(scenario, true)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDeleteCustomScenario(scenario.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteCustomScenario(scenario.id)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete
+                    </button>
                   ) : (
                     <button
                       type="button"
@@ -820,7 +850,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       <Cloud className="w-3.5 h-3.5" />
-                      Save Copy to Cloud
+                      Duplicate
                     </button>
                   )}
                   <button

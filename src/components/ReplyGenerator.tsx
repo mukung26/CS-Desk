@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import {
   AppliedRuleChange,
+  AppliedScriptChange,
   GeneratedReply,
   LearnedRuleUpdate,
+  LearnedScriptUpdate,
   ScriptScenario,
   StoreRuleEntry,
   ToneOption,
@@ -33,7 +35,11 @@ interface ReplyGeneratorProps {
   onApplyLearnedRules: (
     updates: LearnedRuleUpdate[]
   ) => Promise<AppliedRuleChange[]>;
+  onApplyLearnedScripts: (
+    updates: LearnedScriptUpdate[]
+  ) => Promise<AppliedScriptChange[]>;
   onOpenStoreRules?: () => void;
+  onOpenScriptLibrary?: (scenarioId?: string) => void;
   onOpenInChatFlow?: (rawInput: string) => void;
 }
 
@@ -45,7 +51,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   prefillInput,
   onClearPrefill,
   onApplyLearnedRules,
+  onApplyLearnedScripts,
   onOpenStoreRules,
+  onOpenScriptLibrary,
   onOpenInChatFlow,
 }) => {
   const [input, setInput] = useState("");
@@ -66,7 +74,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const [autoLearnRules, setAutoLearnRules] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [isLearningFromEdit, setIsLearningFromEdit] = useState(false);
+  const [isDetectingKnowledge, setIsDetectingKnowledge] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<GeneratedReply | null>(null);
   const [outputPathId, setOutputPathId] = useState<string | null>(null);
@@ -75,7 +83,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [appliedRuleChanges, setAppliedRuleChanges] = useState<AppliedRuleChange[]>([]);
+  const [appliedScriptChanges, setAppliedScriptChanges] = useState<AppliedScriptChange[]>([]);
   const [pendingLearnedUpdates, setPendingLearnedUpdates] = useState<LearnedRuleUpdate[]>([]);
+  const [pendingLearnedScripts, setPendingLearnedScripts] = useState<LearnedScriptUpdate[]>([]);
   const [learnNotice, setLearnNotice] = useState<string | null>(null);
 
   const branchingScenarios = useMemo(
@@ -235,7 +245,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     setIsLoading(true);
     setError(null);
     setAppliedRuleChanges([]);
+    setAppliedScriptChanges([]);
     setPendingLearnedUpdates([]);
+    setPendingLearnedScripts([]);
     setLearnNotice(null);
 
     try {
@@ -281,6 +293,13 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             portuguese: r.portuguese,
             isPrimary: r.isPrimary,
           })),
+          existingScenarios: scenarios.map((s) => ({
+            id: s.id,
+            title: s.title,
+            category: s.category,
+            whenToUse: s.whenToUse,
+            policyRule: s.policyRule,
+          })),
         }),
       });
 
@@ -308,17 +327,32 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         setOutputPathId(null);
       }
 
-      const learned = Array.isArray(generated.learnedRuleUpdates)
+      const learnedRules = Array.isArray(generated.learnedRuleUpdates)
         ? generated.learnedRuleUpdates.filter(
             (u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim()
           )
         : [];
-      if (autoLearnRules && learned.length > 0) {
+      const learnedScripts = Array.isArray(generated.learnedScriptUpdates)
+        ? generated.learnedScriptUpdates.filter(
+            (u) => u && u.title?.trim() && Array.isArray(u.rows) && u.rows.length > 0
+          )
+        : [];
+
+      if (autoLearnRules && (learnedRules.length > 0 || learnedScripts.length > 0)) {
         if (isSignedIn) {
-          const applied = await onApplyLearnedRules(learned);
-          setAppliedRuleChanges(applied);
+          const [appliedScripts, appliedRules] = await Promise.all([
+            learnedScripts.length > 0
+              ? onApplyLearnedScripts(learnedScripts)
+              : Promise.resolve([]),
+            learnedRules.length > 0
+              ? onApplyLearnedRules(learnedRules)
+              : Promise.resolve([]),
+          ]);
+          setAppliedScriptChanges(appliedScripts);
+          setAppliedRuleChanges(appliedRules);
         } else {
-          setPendingLearnedUpdates(learned);
+          setPendingLearnedScripts(learnedScripts);
+          setPendingLearnedUpdates(learnedRules);
         }
       }
     } catch (err: unknown) {
@@ -330,14 +364,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     }
   };
 
-  const handleLearnFromEdit = async () => {
-    if (!reply || !isPtEdited) return;
-    if (!isSignedIn) {
-      onSignIn();
+  const handleManualDetectScenarioAndRule = async () => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      setError("Enter the order/scenario input or instructions first to detect scenarios and rules.");
       return;
     }
 
-    setIsLearningFromEdit(true);
+    setIsDetectingKnowledge(true);
     setLearnNotice(null);
     setError(null);
     try {
@@ -345,10 +379,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rawInput: input.trim(),
-          originalPortuguese: originalGeneratedPt,
-          editedPortuguese: displayedEditablePt.trim(),
-          detectedScenario: reply.detectedScenario,
+          rawInput: trimmed,
+          originalPortuguese: originalGeneratedPt || undefined,
+          editedPortuguese: displayedEditablePt.trim() || undefined,
+          detectedScenario: reply?.detectedScenario || activeScenario?.title,
           customStoreRules: storeRules?.map((r) => ({
             id: r.id,
             topic: r.topic,
@@ -356,36 +390,76 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             portuguese: r.portuguese,
             isPrimary: r.isPrimary,
           })),
+          existingScenarios: scenarios.map((s) => ({
+            id: s.id,
+            title: s.title,
+            category: s.category,
+            whenToUse: s.whenToUse,
+            policyRule: s.policyRule,
+          })),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.error || "Unable to extract Store Rule update.");
+        throw new Error(data?.error || "Unable to detect scenario or rule updates.");
       }
 
-      const learned = Array.isArray(data?.learnedRuleUpdates)
-        ? (data.learnedRuleUpdates as LearnedRuleUpdate[])
+      const learnedScripts = Array.isArray(data?.learnedScriptUpdates)
+        ? (data.learnedScriptUpdates as LearnedScriptUpdate[]).filter(
+            (u) => u && u.title?.trim() && Array.isArray(u.rows) && u.rows.length > 0
+          )
         : [];
-      if (learned.length === 0) {
+      const learnedRules = Array.isArray(data?.learnedRuleUpdates)
+        ? (data.learnedRuleUpdates as LearnedRuleUpdate[]).filter(
+            (u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim()
+          )
+        : [];
+      const note = typeof data?.analysisNote === "string" ? data.analysisNote : "";
+
+      if (learnedScripts.length === 0 && learnedRules.length === 0) {
         setLearnNotice(
-          "Your edit looks order-specific or cosmetic — no reusable Store Rule change was needed."
+          note ||
+            "Existing Script Library scenarios and Store Rules already cover this case — no changes needed."
         );
         return;
       }
 
-      const applied = await onApplyLearnedRules(learned);
-      if (applied.length > 0) {
-        setAppliedRuleChanges((prev) => [...prev, ...applied]);
-        setLearnNotice(null);
+      if (!isSignedIn) {
+        setPendingLearnedScripts(learnedScripts);
+        setPendingLearnedUpdates(learnedRules);
+        return;
+      }
+
+      const [appliedScripts, appliedRules] = await Promise.all([
+        learnedScripts.length > 0
+          ? onApplyLearnedScripts(learnedScripts)
+          : Promise.resolve([]),
+        learnedRules.length > 0
+          ? onApplyLearnedRules(learnedRules)
+          : Promise.resolve([]),
+      ]);
+
+      if (appliedScripts.length > 0) {
+        setAppliedScriptChanges((prev) => [...prev, ...appliedScripts]);
+      }
+      if (appliedRules.length > 0) {
+        setAppliedRuleChanges((prev) => [...prev, ...appliedRules]);
+      }
+      if (appliedScripts.length === 0 && appliedRules.length === 0) {
+        setLearnNotice(
+          note || "Script Library and Store Rules already reflect this guidance."
+        );
       } else {
-        setLearnNotice("Store Rules already reflect this guidance.");
+        setLearnNotice(null);
       }
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Failed to learn from your edit."
+        err instanceof Error
+          ? err.message
+          : "Failed to detect scenarios and rules."
       );
     } finally {
-      setIsLearningFromEdit(false);
+      setIsDetectingKnowledge(false);
     }
   };
 
@@ -411,7 +485,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     setEditablePt("");
     setError(null);
     setAppliedRuleChanges([]);
+    setAppliedScriptChanges([]);
     setPendingLearnedUpdates([]);
+    setPendingLearnedScripts([]);
     setLearnNotice(null);
   };
 
@@ -802,7 +878,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 onChange={(e) => setAutoLearnRules(e.target.checked)}
                 className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
               />
-              Auto-learn &amp; update Store Rules from new instructions while generating
+              Auto-detect new scenarios &amp; rules (saves generalized spiels to Script Library &amp; Store Rules)
             </label>
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <div className="flex items-center gap-2">
@@ -824,6 +900,17 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 </select>
               </div>
               <button
+                type="button"
+                disabled={isDetectingKnowledge || isLoading}
+                onClick={() => void handleManualDetectScenarioAndRule()}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {isDetectingKnowledge
+                  ? "Detecting..."
+                  : "Detect Scenario & Rule"}
+              </button>
+              <button
                 type="submit"
                 disabled={isLoading}
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-[#EE4D2D] hover:bg-[#d94123] disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
@@ -839,6 +926,110 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           </div>
         </form>
       </section>
+
+      {/* Cloud Learned Script Library & Store Rules Feedback */}
+      {(appliedScriptChanges.length > 0 ||
+        appliedRuleChanges.length > 0 ||
+        (!isSignedIn &&
+          (pendingLearnedScripts.length > 0 || pendingLearnedUpdates.length > 0)) ||
+        learnNotice) && (
+        <section className="space-y-3">
+          {(appliedScriptChanges.length > 0 || appliedRuleChanges.length > 0) && (
+            <div className="rounded-xl px-5 py-4 bg-emerald-50/80 border border-emerald-200 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                  Synced to Cloud Script Library &amp; Store Rules (
+                  {appliedScriptChanges.length + appliedRuleChanges.length})
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {appliedScriptChanges.length > 0 && onOpenScriptLibrary && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenScriptLibrary(
+                          appliedScriptChanges[appliedScriptChanges.length - 1]?.scenarioId
+                        )
+                      }
+                      className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
+                    >
+                      View in Script Library →
+                    </button>
+                  )}
+                  {appliedRuleChanges.length > 0 && onOpenStoreRules && (
+                    <button
+                      type="button"
+                      onClick={onOpenStoreRules}
+                      className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
+                    >
+                      View in Store Rules →
+                    </button>
+                  )}
+                </div>
+              </div>
+              <ul className="space-y-1 text-xs text-emerald-900">
+                {appliedScriptChanges.map((change, idx) => (
+                  <li key={`script-${change.scenarioId}-${idx}`}>
+                    <span className="font-semibold uppercase text-[11px] mr-1.5">
+                      [{change.action === "create" ? "New Script" : "Updated Script"}]
+                    </span>
+                    <span className="font-medium">{change.title}</span>
+                    {change.reason ? ` — ${change.reason}` : ""}
+                  </li>
+                ))}
+                {appliedRuleChanges.map((change, idx) => (
+                  <li key={`rule-${change.ruleId}-${idx}`}>
+                    <span className="font-semibold uppercase text-[11px] mr-1.5">
+                      [{change.action === "create" ? "New Rule" : "Updated Rule"}]
+                    </span>
+                    <span className="font-medium">{change.topic}</span>
+                    {change.reason ? ` — ${change.reason}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!isSignedIn &&
+            (pendingLearnedScripts.length > 0 ||
+              pendingLearnedUpdates.length > 0) && (
+              <div className="rounded-xl px-5 py-3.5 bg-orange-50/80 border border-orange-200 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-800">
+                  Detected{" "}
+                  {pendingLearnedScripts.length > 0 && (
+                    <>
+                      <strong>{pendingLearnedScripts.length} Script Library</strong>{" "}
+                      ({pendingLearnedScripts.map((s) => s.title).join(", ")})
+                    </>
+                  )}
+                  {pendingLearnedScripts.length > 0 &&
+                    pendingLearnedUpdates.length > 0 &&
+                    " and "}
+                  {pendingLearnedUpdates.length > 0 && (
+                    <>
+                      <strong>{pendingLearnedUpdates.length} Store Rule</strong>{" "}
+                      ({pendingLearnedUpdates.map((u) => u.topic).join(", ")})
+                    </>
+                  )}
+                  . Sign in with Google to save them to Cloud Firestore.
+                </p>
+                <button
+                  type="button"
+                  onClick={onSignIn}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-[#EE4D2D] hover:bg-[#d94123] rounded-lg cursor-pointer"
+                >
+                  Sign in to Save
+                </button>
+              </div>
+            )}
+
+          {learnNotice && (
+            <div className="rounded-xl px-4 py-3 bg-slate-100 border border-slate-200 text-xs text-slate-700">
+              {learnNotice}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Loading Skeleton */}
       {isLoading && (
@@ -1047,14 +1238,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 {isPtEdited && (
                   <button
                     type="button"
-                    disabled={isLearningFromEdit}
-                    onClick={() => void handleLearnFromEdit()}
+                    disabled={isDetectingKnowledge}
+                    onClick={() => void handleManualDetectScenarioAndRule()}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white border border-[#EE4D2D]/40 rounded-md hover:bg-orange-50 disabled:opacity-60 transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    {isLearningFromEdit
-                      ? "Learning Rule..."
-                      : "Learn Rule from Edit"}
+                    {isDetectingKnowledge
+                      ? "Detecting..."
+                      : "Learn Scenario & Rule from Edit"}
                   </button>
                 )}
                 <span className="text-xs text-slate-500 tabular-nums">
@@ -1069,58 +1260,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               onChange={(e) => updateDisplayedEditablePt(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
             />
-            {learnNotice && (
-              <p className="text-xs text-slate-600">{learnNotice}</p>
-            )}
           </div>
-
-          {/* Learned & Updated Store Rules Feedback */}
-          {appliedRuleChanges.length > 0 && (
-            <div className="px-5 sm:px-6 py-4 bg-emerald-50/70 border-t border-emerald-200 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-                  Learned &amp; Synced to Cloud Store Rules ({appliedRuleChanges.length})
-                </div>
-                {onOpenStoreRules && (
-                  <button
-                    type="button"
-                    onClick={onOpenStoreRules}
-                    className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
-                  >
-                    View in Store Rules →
-                  </button>
-                )}
-              </div>
-              <ul className="space-y-1 text-xs text-emerald-900">
-                {appliedRuleChanges.map((change) => (
-                  <li key={`${change.ruleId}-${change.action}`}>
-                    <span className="font-semibold uppercase text-[11px] mr-1.5">
-                      [{change.action === "create" ? "New Rule" : "Updated Rule"}]
-                    </span>
-                    <span className="font-medium">{change.topic}</span>
-                    {change.reason ? ` — ${change.reason}` : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {pendingLearnedUpdates.length > 0 && !isSignedIn && (
-            <div className="px-5 sm:px-6 py-3.5 bg-orange-50/80 border-t border-orange-200 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-slate-800">
-                Detected {pendingLearnedUpdates.length} new/updated Store Rule(s) from this case (
-                {pendingLearnedUpdates.map((u) => u.topic).join(", ")}). Sign in to save them to Cloud Store Rules.
-              </p>
-              <button
-                type="button"
-                onClick={onSignIn}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-[#EE4D2D] hover:bg-[#d94123] rounded-lg cursor-pointer"
-              >
-                Sign in to Save Rule
-              </button>
-            </div>
-          )}
         </section>
       )}
     </div>

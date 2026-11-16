@@ -11,9 +11,9 @@ import { jsonResponse, type PagesContext } from "../_shared/types.ts";
 export async function onRequestPost(context: PagesContext): Promise<Response> {
   try {
     const body = (await context.request.json().catch(() => null)) as LearnRuleRequest | null;
-    if (!body?.editedPortuguese?.trim() || !body?.rawInput?.trim()) {
+    if (!body?.rawInput?.trim()) {
       return jsonResponse(
-        { error: "Provide the case input and edited reply to learn a rule." },
+        { error: "Provide the case input or instructions first to detect scenarios and rules." },
         400
       );
     }
@@ -41,7 +41,11 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     });
 
     if (!jsonText) {
-      return jsonResponse({ learnedRuleUpdates: [] });
+      return jsonResponse({
+        analysisNote: "No new scenario or rule updates detected.",
+        learnedScriptUpdates: [],
+        learnedRuleUpdates: [],
+      });
     }
 
     const parsed = JSON.parse(jsonText);

@@ -16,12 +16,16 @@ import {
 import { User } from "firebase/auth";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { DEFAULT_STORE_RULES } from "../data/defaultStoreRules";
+import { INITIAL_SCENARIOS } from "../data/scenarios";
 import {
   AppliedRuleChange,
+  AppliedScriptChange,
   ChatFlowSessionEntry,
   ChatFlowTurn,
   LearnedRuleUpdate,
+  LearnedScriptUpdate,
   ScenarioCategory,
+  ScriptPath,
   ScriptRow,
   ScriptScenario,
   StoreRuleEntry,
@@ -70,13 +74,22 @@ function sanitizeRows(rows: ScriptRow[]): ScriptRow[] {
   return valid;
 }
 
+function sanitizePaths(paths?: ScriptPath[]): ScriptPath[] | undefined {
+  if (!Array.isArray(paths) || paths.length === 0) return undefined;
+  return paths.slice(0, 10).map((p, idx) => ({
+    id: sanitizeId(p.id || `path-${idx + 1}`),
+    label: clamp(p.label || `Path ${idx + 1}`, 160),
+    ...(p.cxTrigger?.trim() ? { cxTrigger: clamp(p.cxTrigger, 400) } : {}),
+    rows: sanitizeRows(p.rows || []),
+  }));
+}
+
 // ==========================================
-// 1. CLOUD CUSTOM SCRIPTS (Script Library)
+// 1. CLOUD SCRIPT LIBRARY (All Scripts)
 // ==========================================
 
 export function subscribeCustomScripts(
   userId: string,
-  baseNumberOffset: number,
   onData: (scripts: ScriptScenario[]) => void
 ) {
   const path = `users/${userId}/customScripts`;
@@ -89,28 +102,40 @@ export function subscribeCustomScripts(
         .map((d) => {
           const data = d.data();
           const createdIso = timestampToIso(data.createdAt);
+          const createdMs =
+            data.createdAt instanceof Timestamp
+              ? data.createdAt.toMillis()
+              : Date.parse(createdIso) || 0;
+          const sortOrder =
+            typeof data.sortOrder === "number" ? data.sortOrder : 1000;
           return {
-            createdMs:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Date.parse(createdIso) || 0,
+            createdMs,
+            sortOrder,
             scenario: {
               id: d.id,
-              number: baseNumberOffset + 1,
+              number: sortOrder,
+              sortOrder,
               title: String(data.title || "Untitled Script"),
-              category: (data.category as ScenarioCategory) || ScenarioCategory.GENERAL,
+              category:
+                (data.category as ScenarioCategory) || ScenarioCategory.GENERAL,
               whenToUse: String(data.whenToUse || ""),
               policyRule: String(data.policyRule || ""),
               sampleInput: String(data.sampleInput || ""),
               rows: Array.isArray(data.rows) ? (data.rows as ScriptRow[]) : [],
-              isCustom: true,
+              ...(Array.isArray(data.paths) && data.paths.length > 0
+                ? { paths: data.paths as ScriptPath[] }
+                : {}),
+              isCustom: data.isCustom === false ? false : true,
             } satisfies ScriptScenario,
           };
         })
-        .sort((a, b) => a.createdMs - b.createdMs)
+        .sort((a, b) => {
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.createdMs - b.createdMs;
+        })
         .map((entry, idx) => ({
           ...entry.scenario,
-          number: baseNumberOffset + idx + 1,
+          number: idx + 1,
         }));
 
       onData(items);
@@ -121,12 +146,113 @@ export function subscribeCustomScripts(
   );
 }
 
+export async function seedDefaultCloudCustomScriptsIfNeeded(
+  userId: string
+): Promise<void> {
+  const userPath = `users/${userId}`;
+  const scriptsPath = `users/${userId}/customScripts`;
+  try {
+    const userRef = doc(db, userPath);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.exists() ? userSnap.data() : null;
+    if (userData?.scriptsSeeded === true) {
+      return;
+    }
+
+    const q = query(collection(db, scriptsPath), where("ownerId", "==", userId));
+    const existingSnap = await getDocs(q);
+    const existingIds = new Set(existingSnap.docs.map((d) => d.id));
+
+    const batch = writeBatch(db);
+    let addedCount = 0;
+
+    INITIAL_SCENARIOS.forEach((scenario) => {
+      const safeId = sanitizeId(scenario.id);
+      if (existingIds.has(safeId)) return;
+      const safePaths = sanitizePaths(scenario.paths);
+      batch.set(doc(db, `${scriptsPath}/${safeId}`), {
+        ownerId: userId,
+        title: clamp(scenario.title, 160),
+        category: scenario.category,
+        whenToUse: clamp(scenario.whenToUse, 600),
+        policyRule: clamp(scenario.policyRule, 800),
+        sampleInput: clamp(scenario.sampleInput, 2500),
+        rows: sanitizeRows(scenario.rows),
+        ...(safePaths ? { paths: safePaths } : {}),
+        sortOrder: Math.min(1000, Math.max(0, scenario.number)),
+        isCustom: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      addedCount++;
+    });
+
+    if (userSnap.exists()) {
+      batch.update(userRef, {
+        scriptsSeeded: true,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    if (addedCount > 0 || userSnap.exists()) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, scriptsPath);
+  }
+}
+
+export async function resetCloudCustomScriptsToDefaults(
+  userId: string
+): Promise<void> {
+  const scriptsPath = `users/${userId}/customScripts`;
+  try {
+    const defaultIds = new Set(INITIAL_SCENARIOS.map((s) => sanitizeId(s.id)));
+    const q = query(collection(db, scriptsPath), where("ownerId", "==", userId));
+    const snap = await getDocs(q);
+    const toDelete = snap.docs.filter((d) => defaultIds.has(d.id));
+    if (toDelete.length > 0) {
+      const deleteBatch = writeBatch(db);
+      toDelete.forEach((d) => deleteBatch.delete(d.ref));
+      await deleteBatch.commit();
+    }
+
+    const batch = writeBatch(db);
+    INITIAL_SCENARIOS.forEach((scenario) => {
+      const safeId = sanitizeId(scenario.id);
+      const safePaths = sanitizePaths(scenario.paths);
+      batch.set(doc(db, `${scriptsPath}/${safeId}`), {
+        ownerId: userId,
+        title: clamp(scenario.title, 160),
+        category: scenario.category,
+        whenToUse: clamp(scenario.whenToUse, 600),
+        policyRule: clamp(scenario.policyRule, 800),
+        sampleInput: clamp(scenario.sampleInput, 2500),
+        rows: sanitizeRows(scenario.rows),
+        ...(safePaths ? { paths: safePaths } : {}),
+        sortOrder: Math.min(1000, Math.max(0, scenario.number)),
+        isCustom: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+    batch.update(doc(db, `users/${userId}`), {
+      scriptsSeeded: true,
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, scriptsPath);
+  }
+}
+
 export async function createCloudCustomScript(
   userId: string,
   input: Omit<ScriptScenario, "id" | "number">
 ): Promise<string> {
   const scriptId = sanitizeId(`custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
   const path = `users/${userId}/customScripts/${scriptId}`;
+  const safePaths = sanitizePaths(input.paths);
   try {
     await setDoc(doc(db, path), {
       ownerId: userId,
@@ -136,6 +262,12 @@ export async function createCloudCustomScript(
       policyRule: clamp(input.policyRule || "", 800),
       sampleInput: clamp(input.sampleInput || "", 2500),
       rows: sanitizeRows(input.rows),
+      ...(safePaths ? { paths: safePaths } : {}),
+      sortOrder: Math.min(
+        1000,
+        Math.max(0, Math.round(typeof input.sortOrder === "number" ? input.sortOrder : 500))
+      ),
+      isCustom: input.isCustom === false ? false : true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -152,16 +284,27 @@ export async function updateCloudCustomScript(
 ): Promise<void> {
   const safeId = sanitizeId(scriptId);
   const path = `users/${userId}/customScripts/${safeId}`;
+  const safePaths = sanitizePaths(input.paths);
+  const fields: Record<string, unknown> = {
+    title: clamp(input.title || "Custom Script", 160),
+    category: input.category,
+    whenToUse: clamp(input.whenToUse || "", 600),
+    policyRule: clamp(input.policyRule || "", 800),
+    sampleInput: clamp(input.sampleInput || "", 2500),
+    rows: sanitizeRows(input.rows),
+    updatedAt: serverTimestamp(),
+  };
+  if (safePaths) {
+    fields.paths = safePaths;
+  }
+  if (typeof input.sortOrder === "number") {
+    fields.sortOrder = Math.min(1000, Math.max(0, Math.round(input.sortOrder)));
+  }
+  if (typeof input.isCustom === "boolean") {
+    fields.isCustom = input.isCustom;
+  }
   try {
-    await updateDoc(doc(db, path), {
-      title: clamp(input.title || "Custom Script", 160),
-      category: input.category,
-      whenToUse: clamp(input.whenToUse || "", 600),
-      policyRule: clamp(input.policyRule || "", 800),
-      sampleInput: clamp(input.sampleInput || "", 2500),
-      rows: sanitizeRows(input.rows),
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(doc(db, path), fields);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -178,6 +321,107 @@ export async function deleteCloudCustomScript(
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
+}
+
+export async function applyLearnedScriptUpdates(
+  userId: string,
+  existingScenarios: ScriptScenario[],
+  updates: LearnedScriptUpdate[]
+): Promise<AppliedScriptChange[]> {
+  const validUpdates = updates
+    .filter(
+      (u) =>
+        u &&
+        u.title?.trim() &&
+        Array.isArray(u.rows) &&
+        u.rows.length > 0
+    )
+    .slice(0, 2);
+
+  if (validUpdates.length === 0) return [];
+
+  const changes: AppliedScriptChange[] = [];
+  let nextSortOrder = existingScenarios.reduce(
+    (max, s) => Math.max(max, (s.sortOrder ?? s.number) + 1),
+    existingScenarios.length + 1
+  );
+
+  for (const item of validUpdates) {
+    const cleanTitle = clamp(item.title, 160);
+    const cleanWhen = clamp(item.whenToUse || "Generalized Shopee Brazil CS scenario.", 600);
+    const cleanRule = clamp(item.policyRule || "Follows Shopee Brazil store policy.", 800);
+    const cleanSample = clamp(item.sampleInput || `${cleanTitle} > Customer asks about this scenario.`, 2500);
+    const cleanRows = sanitizeRows(item.rows);
+    const cleanCategory = Object.values(ScenarioCategory).includes(item.category)
+      ? item.category
+      : ScenarioCategory.GENERAL;
+
+    const matchedById = item.existingScenarioId
+      ? existingScenarios.find((s) => s.id === item.existingScenarioId)
+      : undefined;
+    const matchedByTitle = existingScenarios.find(
+      (s) => s.title.toLowerCase().trim() === cleanTitle.toLowerCase()
+    );
+    const target = matchedById ?? matchedByTitle;
+
+    if (target) {
+      const sameRows =
+        target.rows.length === cleanRows.length &&
+        target.rows.every(
+          (r, idx) =>
+            r.section.trim() === cleanRows[idx].section &&
+            r.english.trim() === cleanRows[idx].english &&
+            r.portuguese.trim() === cleanRows[idx].portuguese
+        );
+      if (
+        target.title.trim() === cleanTitle &&
+        target.whenToUse.trim() === cleanWhen &&
+        target.policyRule.trim() === cleanRule &&
+        sameRows
+      ) {
+        continue;
+      }
+
+      await updateCloudCustomScript(userId, target.id, {
+        title: cleanTitle,
+        category: cleanCategory,
+        whenToUse: cleanWhen,
+        policyRule: cleanRule,
+        sampleInput: cleanSample,
+        rows: cleanRows,
+        paths: target.paths,
+        sortOrder: target.sortOrder ?? target.number,
+        isCustom: target.isCustom,
+      });
+
+      changes.push({
+        action: "update",
+        scenarioId: target.id,
+        title: cleanTitle,
+        reason: item.reason || "Updated generalized spiel in Script Library",
+      });
+    } else {
+      const newId = await createCloudCustomScript(userId, {
+        title: cleanTitle,
+        category: cleanCategory,
+        whenToUse: cleanWhen,
+        policyRule: cleanRule,
+        sampleInput: cleanSample,
+        rows: cleanRows,
+        sortOrder: Math.min(1000, nextSortOrder++),
+        isCustom: true,
+      });
+
+      changes.push({
+        action: "create",
+        scenarioId: newId,
+        title: cleanTitle,
+        reason: item.reason || "Added new generalized scenario to Script Library",
+      });
+    }
+  }
+
+  return changes;
 }
 
 // ==========================================

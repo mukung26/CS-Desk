@@ -31,6 +31,7 @@ export interface ScriptPath {
 export interface ScriptScenario {
   id: string;
   number: number;
+  sortOrder?: number;
   title: string;
   category: ScenarioCategory;
   whenToUse: string;
@@ -75,6 +76,25 @@ export interface AppliedRuleChange {
   reason: string;
 }
 
+export interface LearnedScriptUpdate {
+  action: "create" | "update";
+  existingScenarioId?: string;
+  title: string;
+  category: ScenarioCategory;
+  whenToUse: string;
+  policyRule: string;
+  sampleInput: string;
+  rows: ScriptRow[];
+  reason: string;
+}
+
+export interface AppliedScriptChange {
+  action: "create" | "update";
+  scenarioId: string;
+  title: string;
+  reason: string;
+}
+
 export interface GeneratedReply {
   detectedScenario: string;
   category: string;
@@ -84,6 +104,7 @@ export interface GeneratedReply {
   fullPortugueseMessage: string;
   pathReplies?: GeneratedPathReply[];
   learnedRuleUpdates?: LearnedRuleUpdate[];
+  learnedScriptUpdates?: LearnedScriptUpdate[];
 }
 
 export interface ProbingQuestion {

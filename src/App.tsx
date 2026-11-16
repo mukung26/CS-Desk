@@ -10,8 +10,10 @@ import { INITIAL_SCENARIOS } from "./data/scenarios";
 import { DEFAULT_STORE_RULES } from "./data/defaultStoreRules";
 import {
   AppliedRuleChange,
+  AppliedScriptChange,
   ChatFlowSessionEntry,
   LearnedRuleUpdate,
+  LearnedScriptUpdate,
   ScenarioCategory,
   ScriptScenario,
   StoreRuleEntry,
@@ -26,14 +28,17 @@ import {
   signOutFirebase,
 } from "./firebase";
 import {
+  applyLearnedScriptUpdates,
   applyLearnedStoreRuleUpdates,
   createCloudCustomScript,
   createCloudStoreRule,
   deleteCloudChatFlowSession,
   deleteCloudCustomScript,
   deleteCloudStoreRule,
+  resetCloudCustomScriptsToDefaults,
   resetCloudStoreRulesToDefaults,
   saveCloudChatFlowSession,
+  seedDefaultCloudCustomScriptsIfNeeded,
   seedDefaultCloudStoreRulesIfEmpty,
   subscribeChatFlowSessions,
   subscribeCustomScripts,
@@ -71,7 +76,7 @@ export default function App() {
     null
   );
 
-  const [customScenarios, setCustomScenarios] = useState<ScriptScenario[]>([]);
+  const [cloudScenarios, setCloudScenarios] = useState<ScriptScenario[]>([]);
   const [savedChatFlows, setSavedChatFlows] = useState<ChatFlowSessionEntry[]>([]);
   const [storeRules, setStoreRules] =
     useState<StoreRuleEntry[]>(DEFAULT_STORE_RULES);
@@ -91,7 +96,7 @@ export default function App() {
   useEffect(() => {
     if (!authReady) return;
     if (!user) {
-      setCustomScenarios([]);
+      setCloudScenarios([]);
       setSavedChatFlows([]);
       setStoreRules(DEFAULT_STORE_RULES);
       setIsSyncingCloud(false);
@@ -110,9 +115,17 @@ export default function App() {
       }
     };
 
-    void upsertCloudUserAccount(user).catch((err: unknown) => {
-      console.warn("Unable to sync user account profile:", err);
-    });
+    void upsertCloudUserAccount(user)
+      .then(() => seedDefaultCloudCustomScriptsIfNeeded(user.uid))
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("Unable to sync user account / Script Library:", msg);
+        if (msg.includes("Quota exceeded")) {
+          setCloudError(
+            "Cloud Firestore daily free-tier quota exceeded. It will reset tomorrow."
+          );
+        }
+      });
 
     void seedDefaultCloudStoreRulesIfEmpty(user.uid).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -123,15 +136,11 @@ export default function App() {
       );
     });
 
-    const unsubScripts = subscribeCustomScripts(
-      user.uid,
-      INITIAL_SCENARIOS.length,
-      (items) => {
-        scriptsLoaded = true;
-        setCustomScenarios(items);
-        markDone();
-      }
-    );
+    const unsubScripts = subscribeCustomScripts(user.uid, (items) => {
+      scriptsLoaded = true;
+      setCloudScenarios(items);
+      markDone();
+    });
 
     const unsubRules = subscribeStoreRules(user.uid, (items) => {
       rulesLoaded = true;
@@ -188,8 +197,9 @@ export default function App() {
   };
 
   const allScenarios = useMemo(
-    () => [...INITIAL_SCENARIOS, ...customScenarios],
-    [customScenarios]
+    () =>
+      user && cloudScenarios.length > 0 ? cloudScenarios : INITIAL_SCENARIOS,
+    [user, cloudScenarios]
   );
 
   const filteredScenarios = useMemo(() => {
@@ -220,6 +230,24 @@ export default function App() {
         msg.includes("Quota exceeded")
           ? "Cloud Firestore daily free-tier quota exceeded. Quota resets tomorrow."
           : "Unable to save learned Store Rule updates to Cloud Firestore."
+      );
+      return [];
+    }
+  };
+
+  const handleApplyLearnedScripts = async (
+    updates: LearnedScriptUpdate[]
+  ): Promise<AppliedScriptChange[]> => {
+    if (!user || updates.length === 0) return [];
+    setCloudError(null);
+    try {
+      return await applyLearnedScriptUpdates(user.uid, allScenarios, updates);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update Script Library.";
+      setCloudError(
+        msg.includes("Quota exceeded")
+          ? "Cloud Firestore daily free-tier quota exceeded. Quota resets tomorrow."
+          : "Unable to save learned Script Library updates to Cloud Firestore."
       );
       return [];
     }
@@ -345,10 +373,7 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setSelectedScenarioId(null);
-              setActiveTab("library");
-            }}
+            onClick={() => setActiveTab("library")}
             className={`py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === "library"
                 ? "border-[#EE4D2D] text-slate-900"
@@ -568,7 +593,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "generator" && (
+          <div className={activeTab === "generator" ? "block" : "hidden"}>
             <ReplyGenerator
               key={generatorResetKey}
               scenarios={allScenarios}
@@ -578,15 +603,20 @@ export default function App() {
               prefillInput={prefillInput}
               onClearPrefill={() => setPrefillInput("")}
               onApplyLearnedRules={handleApplyLearnedRules}
+              onApplyLearnedScripts={handleApplyLearnedScripts}
               onOpenStoreRules={() => setActiveTab("rules")}
+              onOpenScriptLibrary={(scenarioId) => {
+                if (scenarioId) setSelectedScenarioId(scenarioId);
+                setActiveTab("library");
+              }}
               onOpenInChatFlow={(rawText) => {
                 setChatFlowPrefill(rawText);
                 setActiveTab("chatflow");
               }}
             />
-          )}
+          </div>
 
-          {activeTab === "chatflow" && (
+          <div className={activeTab === "chatflow" ? "block" : "hidden"}>
             <ChatFlow
               scenarios={allScenarios}
               storeRules={storeRules}
@@ -603,13 +633,14 @@ export default function App() {
                 if (user) await deleteCloudChatFlowSession(user.uid, flowId);
               }}
             />
-          )}
+          </div>
 
-          {activeTab === "library" && (
+          <div className={activeTab === "library" ? "block" : "hidden"}>
             <ScriptLibrary
               scenarios={filteredScenarios}
               selectedScenarioId={selectedScenarioId}
               isSignedIn={Boolean(user)}
+              isSyncing={isSyncingCloud}
               onSignIn={() => void handleSignIn()}
               onSelectScenario={setSelectedScenarioId}
               onUseInGenerator={(sample) => {
@@ -619,10 +650,13 @@ export default function App() {
               onAddCustomScenario={handleAddCustomScenario}
               onUpdateCustomScenario={handleUpdateCustomScenario}
               onDeleteCustomScenario={handleDeleteCustomScenario}
+              onResetDefaultScripts={async () => {
+                if (user) await resetCloudCustomScriptsToDefaults(user.uid);
+              }}
             />
-          )}
+          </div>
 
-          {activeTab === "rules" && (
+          <div className={activeTab === "rules" ? "block" : "hidden"}>
             <StoreRules
               rules={storeRules}
               isSignedIn={Boolean(user)}
@@ -641,7 +675,7 @@ export default function App() {
                 if (user) await resetCloudStoreRulesToDefaults(user.uid);
               }}
             />
-          )}
+          </div>
         </main>
       </div>
     </div>

@@ -41,6 +41,18 @@
           "type": "array",
           "description": "Sentence-by-sentence bilingual script rows."
         },
+        "paths": {
+          "type": "array",
+          "description": "Optional branching CX response paths for multi-stage scenarios."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Display ordering index for Script Library scenarios."
+        },
+        "isCustom": {
+          "type": "boolean",
+          "description": "True for agent-created or auto-learned scripts; false for seeded built-in defaults."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -143,6 +155,10 @@
           "type": "string",
           "maxLength": 160,
           "description": "Agent display name."
+        },
+        "scriptsSeeded": {
+          "type": "boolean",
+          "description": "Indicates default 16 Script Library scenarios were seeded into Cloud Firestore."
         },
         "createdAt": {
           "type": "string",

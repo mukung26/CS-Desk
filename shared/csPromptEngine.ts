@@ -73,14 +73,23 @@ FORMATTING RULES:
 - Incorporate any real Order SN, product name, carrier name, city/state, tracking code, status, voucher tier, or dates provided in the input instead of leaving generic placeholders. Only use bracketed placeholders like [DATA] / [DATE] or [RASTREAMENTO] / [TRACKING] when that information is completely missing.
 - Produce "fullEnglishMessage" and "fullPortugueseMessage" by joining the rows naturally with spacing suitable for pasting into Shopee Chat.
 
-SELF-LEARNING STORE RULES ("learnedRuleUpdates"):
-- Compare the agent's case input, trailing agent instructions, and edge-case resolutions against the provided "Active Store CS Rules (from Cloud Store Rules)".
-- Return an entry in "learnedRuleUpdates" ONLY when:
-  1. The agent gives a NEW reusable store policy, workflow instruction, link, threshold, or handling rule that is NOT already captured in Active Store CS Rules ("action": "create"), OR
-  2. The agent modifies, corrects, or refines an EXISTING rule listed in Active Store CS Rules ("action": "update", referencing its exact "existingRuleId").
-- NEVER emit "learnedRuleUpdates" for routine order-specific details (like Order SNs, tracking numbers, customer names, prices, dates) or when existing rules already cover the scenario.
-- For normal routine cases already covered by existing rules, return an empty array: [].
-- Every learned rule MUST be reusable across future orders (use clear English policy summary + warm PT-BR customer guidance without order-specific IDs).`;
+SELF-LEARNING STORE RULES ("learnedRuleUpdates") & SCRIPT LIBRARY ("learnedScriptUpdates"):
+1. "learnedRuleUpdates" (Store Rules):
+   - Compare the agent's case input, trailing agent instructions, and edge-case resolutions against the provided "Active Store CS Rules (from Cloud Store Rules)".
+   - Emit an entry ONLY when:
+     * The agent gives a NEW reusable store policy, workflow instruction, link, threshold, or handling rule NOT already captured in Active Store CS Rules ("action": "create"), OR
+     * The agent modifies, corrects, or refines an EXISTING rule listed in Active Store CS Rules ("action": "update", referencing its exact "existingRuleId").
+   - NEVER emit rules for routine order-specific details (Order SNs, tracking codes, names, prices, dates) or when existing rules already cover it.
+
+2. "learnedScriptUpdates" (Script Library Generalized Spiel):
+   - Compare the case input, customer concern, and agent instructions against "Existing Script Library Scenarios".
+   - Emit an entry ONLY when:
+     * This case introduces a NEW customer-service scenario that is NOT covered by any scenario in Existing Script Library Scenarios ("action": "create"), OR
+     * The agent introduces new steps, policy wording, or scenario-handling changes that should UPDATE an existing scenario in Existing Script Library Scenarios ("action": "update", referencing its exact "existingScenarioId").
+   - EVERY Script Library entry MUST be a **generalized reusable spiel** (never hardcode specific Order SNs, real customer names, or one-off tracking numbers):
+     * Use clear placeholders such as [DATE], [TRACKING], [STATUS], [VOUCHER], [ISSUE TOPIC], or [INSERT SPEC] where order-specific values go.
+     * Provide concise "title", "category" (Delivery | Delayed | Product | Refund | General | Platform), "whenToUse", "policyRule", a generalized "sampleInput", and 3–7 bilingual "rows" (with "highlight": true on key policy rows).
+   - For routine cases already well covered by existing scenarios and rules with no changes, return [] for both arrays.`;
 
 export const CHAT_FLOW_INSTRUCTION = `
 LIVE CHAT FLOW WITH PROBING QUESTIONS & CHOICES MODE:
@@ -121,6 +130,14 @@ export interface StoreRuleContext {
   isPrimary?: boolean;
 }
 
+export interface ScriptScenarioContext {
+  id: string;
+  title: string;
+  category: string;
+  whenToUse: string;
+  policyRule: string;
+}
+
 export interface GenerateReplyRequest {
   input: string;
   trackingNumber?: string;
@@ -139,6 +156,7 @@ export interface GenerateReplyRequest {
   selectedPathGuidance?: string;
   requestedPaths?: RequestedPathInput[];
   customStoreRules?: StoreRuleContext[];
+  existingScenarios?: ScriptScenarioContext[];
 }
 
 export interface ChatFlowRequest {
@@ -315,6 +333,14 @@ export function buildGenerateReplyPromptAndSchema(
           )
           .join("\n")}`
       : null,
+    Array.isArray(body.existingScenarios) && body.existingScenarios.length > 0
+      ? `Existing Script Library Scenarios:\n${body.existingScenarios
+          .map(
+            (s) =>
+              `- [id=${s.id}] ${s.title} (${s.category}) | When: ${s.whenToUse} | Rule: ${s.policyRule}`
+          )
+          .join("\n")}`
+      : null,
     body.tone?.trim()
       ? `Requested Tone: ${body.tone.trim()}`
       : "Requested Tone: Standard Polite",
@@ -399,6 +425,73 @@ export function buildGenerateReplyPromptAndSchema(
         ],
       },
     },
+    learnedScriptUpdates: {
+      type: "ARRAY",
+      description:
+        "Optional new generalized CS scenario spiel or update to an existing Script Library scenario when the input introduces a new scenario or changes an existing one. Return [] if existing Script Library scenarios already cover it cleanly.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          action: {
+            type: "STRING",
+            enum: ["create", "update"],
+          },
+          existingScenarioId: {
+            type: "STRING",
+            description:
+              "Required when action is 'update': exact scenario id from Existing Script Library Scenarios.",
+          },
+          title: {
+            type: "STRING",
+            description: "Concise scenario title (max 120 chars).",
+          },
+          category: {
+            type: "STRING",
+            enum: ["Delivery", "Delayed", "Product", "Refund", "General", "Platform"],
+          },
+          whenToUse: {
+            type: "STRING",
+            description: "When an agent should use this generalized scenario script.",
+          },
+          policyRule: {
+            type: "STRING",
+            description: "Summary of the enforced store policy rule for this scenario.",
+          },
+          sampleInput: {
+            type: "STRING",
+            description: "Generalized example case input without real customer names or order IDs.",
+          },
+          rows: {
+            type: "ARRAY",
+            description: "Generalized bilingual spiel rows using placeholders like [DATE], [TRACKING], [STATUS], [VOUCHER], [ISSUE TOPIC], [INSERT SPEC].",
+            items: {
+              type: "OBJECT",
+              properties: {
+                section: { type: "STRING" },
+                english: { type: "STRING" },
+                portuguese: { type: "STRING" },
+                highlight: { type: "BOOLEAN" },
+              },
+              required: ["section", "english", "portuguese", "highlight"],
+            },
+          },
+          reason: {
+            type: "STRING",
+            description: "Why this generalized scenario was added or updated.",
+          },
+        },
+        required: [
+          "action",
+          "title",
+          "category",
+          "whenToUse",
+          "policyRule",
+          "sampleInput",
+          "rows",
+          "reason",
+        ],
+      },
+    },
   };
 
   const requiredFields = [
@@ -409,6 +502,7 @@ export function buildGenerateReplyPromptAndSchema(
     "fullEnglishMessage",
     "fullPortugueseMessage",
     "learnedRuleUpdates",
+    "learnedScriptUpdates",
   ];
 
   if (requestedPaths.length > 0) {
@@ -607,10 +701,11 @@ export function buildChatFlowPromptAndSchema(
 
 export interface LearnRuleRequest {
   rawInput: string;
-  originalPortuguese: string;
-  editedPortuguese: string;
+  originalPortuguese?: string;
+  editedPortuguese?: string;
   detectedScenario?: string;
   customStoreRules?: StoreRuleContext[];
+  existingScenarios?: ScriptScenarioContext[];
 }
 
 export function buildLearnRulePromptAndSchema(body: LearnRuleRequest) {
@@ -624,29 +719,104 @@ export function buildLearnRulePromptAndSchema(body: LearnRuleRequest) {
           .join("\n")
       : "None provided yet.";
 
+  const scenariosText =
+    Array.isArray(body.existingScenarios) && body.existingScenarios.length > 0
+      ? body.existingScenarios
+          .map(
+            (s) =>
+              `- [id=${s.id}] ${s.title} (${s.category}) | When: ${s.whenToUse} | Rule: ${s.policyRule}`
+          )
+          .join("\n")
+      : "None provided yet.";
+
+  const hasEditComparison =
+    Boolean(body.originalPortuguese?.trim()) &&
+    Boolean(body.editedPortuguese?.trim()) &&
+    body.originalPortuguese?.trim() !== body.editedPortuguese?.trim();
+
   const contextLines = [
     `Active Store CS Rules:\n${rulesText}`,
+    `Existing Script Library Scenarios:\n${scenariosText}`,
     body.detectedScenario?.trim()
-      ? `Detected Scenario: ${body.detectedScenario.trim()}`
+      ? `Detected Scenario Context: ${body.detectedScenario.trim()}`
       : null,
-    `Agent Case Input:\n${body.rawInput.trim()}`,
-    `Original Generated PT-BR Reply:\n${body.originalPortuguese.trim()}`,
-    `Agent Edited PT-BR Reply:\n${body.editedPortuguese.trim()}`,
+    `Agent Case Input / Instructions:\n${body.rawInput.trim()}`,
+    body.originalPortuguese?.trim()
+      ? `Original Generated PT-BR Reply:\n${body.originalPortuguese.trim()}`
+      : null,
+    hasEditComparison
+      ? `Agent Edited PT-BR Reply:\n${body.editedPortuguese!.trim()}`
+      : null,
   ]
     .filter(Boolean)
     .join("\n\n");
 
-  const systemInstruction = `You are a Store Policy Analyst for a Shopee Brazil seller CS team.
-Compare the Agent's Case Input and their Edited PT-BR Reply against the Original Generated Reply and Active Store CS Rules.
-Extract 1 (or up to 2) reusable policy updates or new rules that the agent introduced in their edit or instructions.
-- If the edit updates or corrects an existing rule in Active Store CS Rules, set "action": "update" and include its exact "existingRuleId".
-- If it introduces a brand-new reusable store rule, set "action": "create".
-- Strip out one-off order IDs, tracking numbers, customer names, or dates so the rule is clean and reusable for all future orders.
-- If the edit was purely cosmetic/typo with no reusable policy rule change, return an empty array [].`;
+  const systemInstruction = `You are a Senior Shopee Brazil CS Knowledge Base & Policy Architect.
+Analyze the Agent Case Input / Instructions (and any Original vs Edited PT-BR Reply if provided) against BOTH Existing Script Library Scenarios AND Active Store CS Rules.
+
+Your task is to decide whether this input represents:
+1. A NEW scenario not yet in Existing Script Library Scenarios -> add a generalized bilingual spiel in "learnedScriptUpdates" ("action": "create"), AND add a new Store Rule in "learnedRuleUpdates" ("action": "create") if a new reusable policy/threshold/link/requirement is needed.
+2. A CHANGE or IMPROVEMENT to an existing scenario or existing store rule -> update the matching Script Library scenario ("action": "update" with exact "existingScenarioId") and/or update the matching Store Rule ("action": "update" with exact "existingRuleId").
+3. If everything is already fully covered by Existing Script Library Scenarios and Active Store CS Rules (or an edit was merely order-specific/cosmetic), return [] for that array and explain briefly in "analysisNote".
+
+CRITICAL GENERALIZATION RULES for "learnedScriptUpdates":
+- Strip all real Order SNs, real customer names, specific dates, specific product prices, or one-off tracking codes.
+- Use clean placeholders like [DATE], [TRACKING], [STATUS], [VOUCHER], [ISSUE TOPIC], or [INSERT SPEC] where dynamic values belong so the agent can reuse the script for any customer order.
+- Include natural English + warm PT-BR in 3 to 7 structured rows (Greeting, Situation/Policy rows with highlight: true on critical rules, Assurance with Shopee Guarantee, Closing).`;
 
   const responseSchema: Record<string, unknown> = {
     type: "OBJECT",
     properties: {
+      analysisNote: {
+        type: "STRING",
+        description:
+          "1 concise sentence explaining what new scenario/rule was detected or confirming existing Script Library & Store Rules already cover it.",
+      },
+      learnedScriptUpdates: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            action: {
+              type: "STRING",
+              enum: ["create", "update"],
+            },
+            existingScenarioId: { type: "STRING" },
+            title: { type: "STRING" },
+            category: {
+              type: "STRING",
+              enum: ["Delivery", "Delayed", "Product", "Refund", "General", "Platform"],
+            },
+            whenToUse: { type: "STRING" },
+            policyRule: { type: "STRING" },
+            sampleInput: { type: "STRING" },
+            rows: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  section: { type: "STRING" },
+                  english: { type: "STRING" },
+                  portuguese: { type: "STRING" },
+                  highlight: { type: "BOOLEAN" },
+                },
+                required: ["section", "english", "portuguese", "highlight"],
+              },
+            },
+            reason: { type: "STRING" },
+          },
+          required: [
+            "action",
+            "title",
+            "category",
+            "whenToUse",
+            "policyRule",
+            "sampleInput",
+            "rows",
+            "reason",
+          ],
+        },
+      },
       learnedRuleUpdates: {
         type: "ARRAY",
         items: {
@@ -674,7 +844,7 @@ Extract 1 (or up to 2) reusable policy updates or new rules that the agent intro
         },
       },
     },
-    required: ["learnedRuleUpdates"],
+    required: ["analysisNote", "learnedScriptUpdates", "learnedRuleUpdates"],
   };
 
   return {
