@@ -1,0 +1,6 @@
+{
+  "name": "Atendimento BR — Shopee Brazil CS Desk",
+  "description": "Shopee Brazil customer service response generator and bilingual English-Portuguese script desk for fast, policy-compliant replies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

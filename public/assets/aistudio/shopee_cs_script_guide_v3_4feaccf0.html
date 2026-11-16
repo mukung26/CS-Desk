@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopee CS Quick Script Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #1a1d23;
+  --muted: #5a6270;
+  --accent: #ee4d2d;
+  --accent-weak: color-mix(in oklab, var(--accent) 10%, var(--surface));
+  --line: color-mix(in oklab, var(--ink) 8%, transparent);
+  --success: #16a34a;
+  --warning: #d97706;
+  --info: #2563eb;
+  --step-0: clamp(0.9rem, 0.85rem + 0.25vw, 1rem);
+  --step-1: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
+  --step-2: clamp(1.3rem, 1.1rem + 1vw, 1.75rem);
+  --step-3: clamp(1.8rem, 1.4rem + 2vw, 2.5rem);
+  --space: clamp(1rem, 0.75rem + 1.25vw, 1.5rem);
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.05), 0 8px 24px -10px rgba(0,0,0,0.12);
+  --sidebar-width: 280px;
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+body {
+  font-family: "Inter", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: var(--step-0);
+  line-height: 1.65;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: calc(var(--space)*1.5) var(--space);
+  text-align: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: 110px;
+}
+
+header h1 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: var(--step-2);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+header p {
+  color: var(--muted);
+  margin-top: 0.35rem;
+  font-size: 0.9em;
+}
+
+.badge {
+  display: inline-block;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+.layout {
+  display: flex;
+  margin-top: 110px;
+  min-height: calc(100vh - 110px);
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: calc(var(--space)*1.25);
+  position: fixed;
+  left: 0;
+  top: 110px;
+  bottom: 0;
+  overflow-y: auto;
+  z-index: 90;
+}
+
+.sidebar h2 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: var(--step-1);
+  margin-bottom: 1rem;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 0.5rem 0;
+  z-index: 10;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sidebar li a {
+  display: block;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 0.88em;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+}
+
+.sidebar li a:hover {
+  background: var(--accent-weak);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: calc(var(--space)*1.5);
+  max-width: calc(100% - var(--sidebar-width));
+}
+
+.script-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: calc(var(--space)*1.5);
+  overflow: hidden;
+}
+
+.script-header {
+  padding: calc(var(--space)*1) calc(var(--space)*1.25);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.script-header .num {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.script-header h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: var(--step-1);
+  font-weight: 700;
+  flex: 1;
+}
+
+.tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tag-delayed { background: #fef3c7; color: #92400e; }
+.tag-product { background: #dbeafe; color: #1e40af; }
+.tag-delivery { background: #d1fae5; color: #065f46; }
+.tag-refund { background: #fee2e2; color: #991b1b; }
+.tag-general { background: #f3e8ff; color: #6b21a8; }
+.tag-platform { background: #cffafe; color: #155e75; }
+
+.script-body {
+  padding: calc(var(--space)*1.25);
+}
+
+.note {
+  background: var(--accent-weak);
+  border-left: 3px solid var(--accent);
+  padding: 0.75rem 1rem;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 1rem;
+  font-size: 0.9em;
+  color: var(--ink);
+}
+
+.note strong { color: var(--accent); }
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  margin-top: 0.5rem;
+}
+
+thead th {
+  background: var(--bg);
+  text-align: left;
+  padding: 0.65rem 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 2px solid var(--line);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 0.75rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+tbody tr:hover td { background: #fafafa; }
+
+td:first-child {
+  font-weight: 600;
+  color: var(--ink);
+  width: 22%;
+  min-width: 140px;
+}
+
+td:nth-child(2) {
+  color: var(--muted);
+  font-style: italic;
+  width: 38%;
+}
+
+td:nth-child(3) {
+  color: var(--ink);
+  width: 40%;
+  background: #fafafa;
+}
+
+tr.highlight td:nth-child(3) {
+  background: #fff7ed;
+}
+
+.must-say {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
+.footer {
+  text-align: center;
+  padding: calc(var(--space)*2) var(--space);
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: relative;
+    width: 100%;
+    top: auto;
+    left: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 280px;
+  }
+  .main {
+    margin-left: 0;
+    max-width: 100%;
+  }
+  .layout {
+    flex-direction: column;
+  }
+}
+
+@media print {
+  body { background: #fff; }
+  header { position: static; }
+  .sidebar { display: none; }
+  .main { margin-left: 0; max-width: 100%; }
+  .script-card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+}
+
+@page { size: A4; margin: 16mm; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="badge">Quick Reference</div>
+  <h1>Shopee CS Script Guide</h1>
+  <p>Copy-paste ready replies for common customer concerns</p>
+</header>
+
+<div class="layout">
+
+  <nav class="sidebar">
+    <h2>Scenarios</h2>
+    <ul>
+      <li><a href="#s1">1. Address / Description Update</a></li>
+      <li><a href="#s2">2. Product Defect / Issue (Ask Video)</a></li>
+      <li><a href="#s3">3. Order Stuck at Customs</a></li>
+      <li><a href="#s4">4. "Where Is My Order?" (General)</a></li>
+      <li><a href="#s5">5. Delivered but Not Received</a></li>
+      <li><a href="#s6">6. Refund Request (Past Est. Delivery)</a></li>
+      <li><a href="#s7">7. Cancel Already-Shipped Order</a></li>
+      <li><a href="#s8">8. Already Received, Tracking Not Updated</a></li>
+      <li><a href="#s9">9. Customer Gives Delivery Time Preference</a></li>
+      <li><a href="#s10">10. Product Specification Question</a></li>
+      <li><a href="#s11">11. Out of Scope — Contact Shopee Platform</a></li>
+    </ul>
+  </nav>
+
+  <main class="main">
+
+    <!-- SCENARIO 1 -->
+    <article class="script-card" id="s1">
+      <div class="script-header">
+        <span class="num">1</span>
+        <h3>Address / Description Update</h3>
+        <span class="tag tag-general">General</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> Customer says their address is correct but wants to add/remove a description (e.g., old house number, "Casa 3").</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! Thank you for letting us know about the address description.</td><td>Olá! Muito obrigado por nos informar sobre a descrição do endereço.</td></tr>
+              <tr><td>Address note</td><td>We understand your current address is correct, but the old description belongs to your previous residence and you want the delivery person to disregard it.</td><td>Entendemos que o seu endereço atual está correto, mas a descrição antiga pertence à sua residência anterior e você gostaria que o entregador a desconsiderasse.</td></tr>
+              <tr class="highlight"><td>Important reminder</td><td>Delivery is made strictly to the address registered in the Shopee account. If the old description is still saved in Shopee, we strongly recommend updating or removing it directly in the Shopee app before ship-out to avoid confusion.</td><td>Por favor, observe que a entrega será feita estritamente no endereço cadastrado na sua conta da Shopee. Se a descrição antiga ainda estiver salva na Shopee, recomendamos fortemente que você a atualize ou remova diretamente no aplicativo da Shopee antes do envio, para evitar qualquer confusão durante a entrega.</td></tr>
+              <tr><td>Store action</td><td>Since your order is still being prepared and not yet shipped, we will also try to add a note if possible. However, the courier follows the official address on the shipping label.</td><td>Como o seu pedido ainda está sendo preparado e ainda não foi enviado, também tentaremos adicionar uma observação se possível. No entanto, o entregador segue principalmente o endereço oficial impresso na etiqueta de envio.</td></tr>
+              <tr><td>Closing</td><td>Thank you again for the heads up, and we hope your order arrives smoothly.</td><td>Obrigado novamente pelo aviso, e esperamos que o seu pedido chegue sem problemas.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 2 -->
+    <article class="script-card" id="s2">
+      <div class="script-header">
+        <span class="num">2</span>
+        <h3>Product Defect / Issue — Request Video</h3>
+        <span class="tag tag-product">Product</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> Customer reports a product problem (not working, shutting off, broken, etc.). <strong>Never</strong> promise immediate refund. Always ask for video first.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Good evening! Thank you for contacting us. We are sorry to hear about this issue.</td><td>Boa noite! Obrigado por entrar em contato conosco. Lamentamos saber sobre esse problema.</td></tr>
+              <tr class="highlight"><td>Request video</td><td>To better assist you and verify the issue, could you please provide a short video showing the problem? This will help us understand exactly what is happening.</td><td>Para melhor assisti-lo e verificar o problema, você poderia nos enviar um vídeo curto mostrando o problema? Isso nos ajudará a entender exatamente o que está acontecendo.</td></tr>
+              <tr><td>Common causes intro</td><td>In the meantime, here are some common causes that may be simple to fix:</td><td>Enquanto isso, aqui estão algumas causas comuns que podem ser simples de resolver:</td></tr>
+              <tr><td>Power / Connection</td><td>Please check that your power supply and all connections are correct and secure. A loose connection or insufficient power can cause sudden issues.</td><td>Por favor, verifique se a fonte de alimentação e todas as conexões estão corretas e firmes. Uma conexão solta ou energia insuficiente pode causar problemas súbitos.</td></tr>
+              <tr><td>Overheating</td><td>If the item gets too hot, it may trigger protection and shut down. Make sure it has enough ventilation.</td><td>Se o item esquentar demais, pode acionar a proteção e desligar. Certifique-se de que tenha ventilação suficiente.</td></tr>
+              <tr class="highlight"><td>Next steps</td><td>Please try checking these points first. If the problem continues, please send the video and we will review it with our team to find the best solution.</td><td>Por favor, tente verificar esses pontos primeiro. Se o problema continuar, nos envie o vídeo e revisaremos com a nossa equipe para encontrar a melhor solução.</td></tr>
+              <tr><td>Closing</td><td>We appreciate your cooperation and hope we can resolve this quickly.</td><td>Agradecemos a sua cooperação e esperamos poder resolver isso rapidamente.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 3 -->
+    <article class="script-card" id="s3">
+      <div class="script-header">
+        <span class="num">3</span>
+        <h3>Order Stuck at Customs</h3>
+        <span class="tag tag-delayed">Delayed</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> Tracking shows "inspeção na alfândega" or similar for several days. <span class="must-say">Must say</span> both required phrases. Do not mention "lost" or suggest refund unless CX asks.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! We sincerely apologize for the delay and for the frustration this has caused. We completely understand your concern.</td><td>Olá! Pedimos sinceras desculpas pela demora e pela frustração que isso causou. Entendemos completamente a sua preocupação.</td></tr>
+              <tr><td>Current status</td><td>We checked your tracking and can see that your order is currently undergoing import customs inspection in Brazil, which is standard for international shipments.</td><td>Verificamos o rastreamento e podemos ver que o seu pedido está atualmente em inspeção na alfândega de importação no Brasil, o que é padrão para envios internacionais.</td></tr>
+              <tr><td>Explanation</td><td>Customs inspections are conducted by local authorities and the timeframe varies depending on package volume. This is beyond the shop's direct control, but we are actively working to help.</td><td>As inspeções na alfândega são realizadas pelas autoridades locais e o prazo varia dependendo do volume de pacotes. Isso está fora do controle direto da loja, mas estamos trabalhando ativamente para ajudar.</td></tr>
+              <tr class="highlight"><td>Required phrase 1</td><td>Please rest assured that <strong>we follow up this to courier</strong> and <strong>we expedite follow your order to courier</strong> to check the customs status and request the fastest possible release.</td><td>Fique tranquilo, pois <strong>nós acompanhamos isso junto à transportadora</strong> e <strong>aceleramos o acompanhamento do seu pedido junto à transportadora</strong> para verificar a situação na alfândega e solicitar a liberação mais rápida possível.</td></tr>
+              <tr><td>Reassurance</td><td>Your order has not been lost. It is still in transit and simply awaiting final customs clearance before proceeding to local distribution.</td><td>O seu pedido não foi perdido. Ele ainda está em trânsito e apenas aguarda a liberação final da alfândega antes de seguir para a distribuição local.</td></tr>
+              <tr><td>Closing</td><td>We truly appreciate your patience and understanding. We will do everything we can from our side.</td><td>Agradecemos sinceramente a sua paciência e compreensão. Faremos tudo o que pudermos do nosso lado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 4 -->
+    <article class="script-card" id="s4">
+      <div class="script-header">
+        <span class="num">4</span>
+        <h3>"Where Is My Order?" (General / In Transit)</h3>
+        <span class="tag tag-general">General</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX asks "where is my order" and tracking shows normal movement (not stuck at customs, just in transit).</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! Thank you for reaching out. We are happy to provide an update on your order.</td><td>Olá! Obrigado por entrar em contato. Temos prazer em fornecer uma atualização sobre o seu pedido.</td></tr>
+              <tr><td>Current status</td><td>Your order is currently in transit. According to our system, the latest update was [DATE] when the package was collected by the courier for continued transport.</td><td>O seu pedido está atualmente em trânsito. De acordo com o nosso sistema, a última atualização foi em [DATA] quando o pacote foi coletado pela transportadora para continuidade do transporte.</td></tr>
+              <tr><td>Estimated delivery</td><td>The estimated delivery date is [DATE]. Please kindly wait a little longer as your package is on its way.</td><td>A data estimada de entrega é [DATA]. Por favor, aguarde mais um pouco, pois o seu pacote está a caminho.</td></tr>
+              <tr><td>Tracking</td><td>You can continue tracking your order using tracking number [TRACKING].</td><td>Você pode continuar acompanhando o seu pedido usando o número de rastreamento [RASTREAMENTO].</td></tr>
+              <tr><td>Closing</td><td>If you do not receive your order by the estimated date, please contact us again.</td><td>Se você não receber o seu pedido até a data estimada, por favor, entre em contato conosco novamente.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 5 -->
+    <article class="script-card" id="s5">
+      <div class="script-header">
+        <span class="num">5</span>
+        <h3>Delivered but Not Received</h3>
+        <span class="tag tag-delivery">Delivery</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> Tracking shows "DELIVERED" but CX says they never got it. <strong>Key rule:</strong> We are only the seller. Tell CX to check locally first, then tap Return/Refund in the app.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Good morning! We sincerely apologize for the confusion regarding your delivery.</td><td>Bom dia! Pedimos sinceras desculpas pela confusão em relação à sua entrega.</td></tr>
+              <tr class="highlight"><td>Seller limitation</td><td>Please kindly note that we are only the seller. Once shipped, delivery is handled by the courier and Shopee's system. We cannot intercept or directly resolve delivery issues.</td><td>Por favor, observe que somos apenas o vendedor. Uma vez enviado, a entrega é tratada pela transportadora e pelo sistema da Shopee. Não podemos interceptar ou resolver diretamente problemas de entrega.</td></tr>
+              <tr><td>Local check</td><td>We kindly ask you to check with neighbors, family, building concierge, or anyone at your address who may have received it.</td><td>Pedimos gentilmente que verifique com vizinhos, familiares, porteiro do prédio ou qualquer pessoa no seu endereço que possa ter recebido o pacote.</td></tr>
+              <tr class="highlight"><td>Return/Refund instruction</td><td>If you cannot locate your package after checking, please tap the <strong>"Return/Refund"</strong> button directly in the Shopee app so Shopee's protection team can investigate.</td><td>Se você não conseguir localizar o pacote após verificar, por favor, toque no botão <strong>"Devolução/Reembolso"</strong> diretamente no aplicativo da Shopee para que a equipe de proteção da Shopee possa investigar.</td></tr>
+              <tr><td>Closing</td><td>We truly regret the inconvenience and appreciate your understanding.</td><td>Lamentamos sinceramente o inconveniente e agradecemos a sua compreensão.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 6 -->
+    <article class="script-card" id="s6">
+      <div class="script-header">
+        <span class="num">6</span>
+        <h3>Refund Request — Past Estimated Delivery</h3>
+        <span class="tag tag-refund">Refund</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX explicitly asks for refund and the order is already past the estimated delivery date. Instruct to use the in-app Return/Refund button.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! We sincerely apologize for the long delay. We completely understand your frustration.</td><td>Olá! Pedimos sinceras desculpas pela longa demora. Entendemos perfeitamente a sua frustração.</td></tr>
+              <tr><td>Status check</td><td>We checked your tracking and see there have been no updates since [DATE]. We understand your concern after waiting so long.</td><td>Verificamos o rastreamento e vemos que não houve atualizações desde [DATA]. Entendemos a sua preocupação após esperar tanto tempo.</td></tr>
+              <tr class="highlight"><td>Required phrase</td><td>Please rest assured that <strong>we follow up this to courier</strong> and <strong>we expedite follow your order to courier</strong> to investigate the current location.</td><td>Fique tranquilo, pois <strong>nós acompanhamos isso junto à transportadora</strong> e <strong>aceleramos o acompanhamento do seu pedido junto à transportadora</strong> para investigar a localização atual.</td></tr>
+              <tr class="highlight"><td>Refund instruction</td><td>Since your order is past the estimated delivery date and you requested a refund, please tap the <strong>"Return/Refund"</strong> button directly in your Shopee app. Shopee's protection team will review your claim.</td><td>Como o seu pedido já ultrapassou a data estimada de entrega e você solicitou reembolso, por favor, toque no botão <strong>"Devolução/Reembolso"</strong> diretamente no seu aplicativo da Shopee. A equipe de proteção da Shopee irá analisar a sua reclamação.</td></tr>
+              <tr><td>Closing</td><td>We truly appreciate your patience and understanding.</td><td>Agradecemos sinceramente a sua paciência e compreensão.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 7 -->
+    <article class="script-card" id="s7">
+      <div class="script-header">
+        <span class="num">7</span>
+        <h3>Cancel Already-Shipped Order</h3>
+        <span class="tag tag-refund">Refund</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX wants to cancel after the order has already been shipped. Store cannot cancel. Direct to Shopee webform.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Policy statement</td><td>We understand your request. However, please kindly note that once an order has been shipped, our store is no longer able to process cancellations.</td><td>Entendemos o seu pedido. No entanto, por favor, observe que uma vez que um pedido já foi enviado, a nossa loja não consegue mais processar cancelamentos.</td></tr>
+              <tr class="highlight"><td>Shopee webform</td><td>To request cancellation or a refund for an already-shipped order, please submit your request directly through Shopee's official platform:</td><td>Para solicitar cancelamento ou reembolso de um pedido já enviado, por favor, envie o seu pedido diretamente pela plataforma oficial da Shopee:</td></tr>
+              <tr class="highlight"><td>Link</td><td>https://help.shopee.com.br/portal/webform/d75e2dbb49594bd19d1ea83485339a45?entryPoint=1&lastArticleID=</td><td>https://help.shopee.com.br/portal/webform/d75e2dbb49594bd19d1ea83485339a45?entryPoint=1&lastArticleID=</td></tr>
+              <tr><td>Closing</td><td>We apologize for any inconvenience and appreciate your understanding.</td><td>Pedimos desculpas por qualquer inconveniente e agradecemos a sua compreensão.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 8 -->
+    <article class="script-card" id="s8">
+      <div class="script-header">
+        <span class="num">8</span>
+        <h3>Already Received, Tracking Not Updated</h3>
+        <span class="tag tag-delivery">Delivery</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX confirms they physically have the item but tracking still shows "in transit" or not delivered. This is a positive situation. Reassure only.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Acknowledgment</td><td>Hello! Thank you for confirming that you have already received your order.</td><td>Olá! Obrigado por confirmar que já recebeu o seu pedido.</td></tr>
+              <tr class="highlight"><td>Reassurance</td><td>No worries! Sometimes the driver needs a little time to scan and tag the order as delivered in the system. The tracking should update soon.</td><td>Fique tranquilo! Às vezes o entregador precisa de um pouco de tempo para escanear e marcar o pedido como entregue no sistema. O rastreamento deve atualizar em breve.</td></tr>
+              <tr><td>Closing</td><td>We are glad your order arrived safely. If you need anything else, feel free to contact us.</td><td>Ficamos felizes que o seu pedido chegou em segurança. Se precisar de mais alguma coisa, sinta-se à vontade para entrar em contato.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 9 -->
+    <article class="script-card" id="s9">
+      <div class="script-header">
+        <span class="num">9</span>
+        <h3>Customer Gives Delivery Time Preference</h3>
+        <span class="tag tag-general">General</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX says "I am at home at 4pm" or gives a preferred delivery time. Clarify that sellers do not control courier schedules.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Acknowledgment</td><td>Hello! Thank you for letting us know your availability.</td><td>Olá! Obrigado por nos informar sobre a sua disponibilidade.</td></tr>
+              <tr class="highlight"><td>Clarification</td><td>Please kindly note that as the seller, we do not have control over the courier's delivery route or specific delivery times. The local courier determines the schedule.</td><td>Por favor, observe que, como vendedor, não temos controle sobre a rota da transportadora ou horários específicos de entrega. A transportadora local determina o cronograma.</td></tr>
+              <tr><td>Status</td><td>Your order is currently [STATUS]. The estimated delivery date is [DATE]. It will still take some time before local delivery begins.</td><td>O seu pedido está atualmente [STATUS]. A data estimada de entrega é [DATA]. Ainda levará algum tempo antes que a entrega local comece.</td></tr>
+              <tr><td>Tracking advice</td><td>We recommend continuing to track with [TRACKING]. Once it shows "out for delivery," the courier is approaching.</td><td>Recomendamos continuar acompanhando com [RASTREAMENTO]. Assim que mostrar "saiu para entrega," o entregador está se aproximando.</td></tr>
+              <tr><td>Closing</td><td>We appreciate your understanding and patience.</td><td>Agradecemos a sua compreensão e paciência.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 10 -->
+    <article class="script-card" id="s10">
+      <div class="script-header">
+        <span class="num">10</span>
+        <h3>Product Specification Question</h3>
+        <span class="tag tag-product">Product</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX asks about product details (size, voltage, material, compatibility). Answer honestly from the product page only. Do not invent specs.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! Thank you for your interest in this product.</td><td>Olá! Obrigado pelo seu interesse neste produto.</td></tr>
+              <tr class="highlight"><td>Honest answer</td><td>According to the product page listing, [INSERT SPEC FROM PAGE]. Please note that we kindly ask you to check the product description on the listing for full details.</td><td>De acordo com a descrição da página do produto, [INSERIR ESPECIFICAÇÃO DA PÁGINA]. Por favor, observe que pedimos gentilmente que verifique a descrição do produto na listagem para detalhes completos.</td></tr>
+              <tr><td>If unsure</td><td>If you have any other questions after reviewing the product page, please feel free to ask.</td><td>Se tiver mais alguma dúvida após revisar a página do produto, sinta-se à vontade para perguntar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <!-- SCENARIO 11 -->
+    <article class="script-card" id="s11">
+      <div class="script-header">
+        <span class="num">11</span>
+        <h3>Out of Scope — Contact Shopee Platform</h3>
+        <span class="tag tag-platform">Platform</span>
+      </div>
+      <div class="script-body">
+        <div class="note"><strong>When to use:</strong> CX asks about something completely outside the seller's responsibility (Shopee Coins, ShopeePay, app bugs, account issues, voucher problems, payment/installment issues, platform policies, disputes handled by Shopee, etc.). Be polite but redirect firmly to Shopee.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Section</th><th>English (for you)</th><th>Portuguese (send to CX)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Greeting</td><td>Hello! Thank you for reaching out to us.</td><td>Olá! Obrigado por entrar em contato conosco.</td></tr>
+              <tr class="highlight"><td>Scope clarification</td><td>We understand your concern. However, please kindly note that this matter is related to the Shopee platform itself and is outside our store's scope of support. As the seller, we only handle questions related to the products we sell and their shipping.</td><td>Entendemos a sua preocupação. No entanto, por favor, observe que esta questão está relacionada à própria plataforma da Shopee e está fora do alcance do suporte da nossa loja. Como vendedor, só lidamos com perguntas relacionadas aos produtos que vendemos e ao envio deles.</td></tr>
+              <tr class="highlight"><td>Redirect to Shopee</td><td>For questions about [ISSUE TOPIC], we kindly ask you to contact Shopee's official customer service directly through the Shopee app or website, as they are the ones who can properly assist you with platform-related matters.</td><td>Para questões sobre [ASSUNTO], pedimos gentilmente que entre em contato diretamente com o atendimento oficial da Shopee pelo aplicativo ou site da Shopee, pois eles são os responsáveis por ajudar adequadamente com assuntos relacionados à plataforma.</td></tr>
+              <tr><td>How to contact Shopee</td><td>You can access Shopee's help center by going to the "Me" tab in the Shopee app, then selecting "Help Center" or "Customer Service" to chat with Shopee's support team.</td><td>Você pode acessar o centro de ajuda da Shopee indo na aba "Eu" no aplicativo da Shopee e depois selecionando "Central de Ajuda" ou "Atendimento" para conversar com a equipe de suporte da Shopee.</td></tr>
+              <tr><td>Closing</td><td>We apologize for not being able to assist with this specific matter, and we appreciate your understanding.</td><td>Pedimos desculpas por não podermos ajudar com esta questão específica, e agradecemos a sua compreensão.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <div class="footer">
+      Built for quick copy-paste use. Replace bracketed fields like [DATE], [TRACKING], [DATA], [STATUS], [ISSUE TOPIC] with actual details before sending.
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

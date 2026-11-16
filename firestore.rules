@@ -1,0 +1,386 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId && request.auth.token.email_verified == true;
+    }
+
+    function isValidCustomScript(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'title',
+          'category',
+          'whenToUse',
+          'policyRule',
+          'sampleInput',
+          'rows',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'category',
+          'whenToUse',
+          'policyRule',
+          'sampleInput',
+          'rows',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 160
+        && data.category in ['Delivery', 'Delayed', 'Product', 'Refund', 'General', 'Platform']
+        && data.whenToUse is string
+        && data.whenToUse.size() <= 600
+        && data.policyRule is string
+        && data.policyRule.size() <= 800
+        && data.sampleInput is string
+        && data.sampleInput.size() <= 2500
+        && data.rows is list
+        && data.rows.size() >= 1
+        && data.rows.size() <= 30
+        && data.rows[0] is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSavedCase(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'rawInput',
+          'tone',
+          'reply',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'rawInput',
+          'trackingNumber',
+          'estimatedDate',
+          'tone',
+          'reply',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.rawInput is string
+        && data.rawInput.size() >= 1
+        && data.rawInput.size() <= 8000
+        && (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 80))
+        && (!('estimatedDate' in data) || (data.estimatedDate is string && data.estimatedDate.size() <= 40))
+        && data.tone in ['Standard Polite', 'Extra Empathetic', 'Firm Policy']
+        && data.reply is map
+        && data.reply.keys().hasAll([
+          'detectedScenario',
+          'category',
+          'policySummary',
+          'rows',
+          'fullEnglishMessage',
+          'fullPortugueseMessage'
+        ])
+        && data.reply.keys().hasOnly([
+          'detectedScenario',
+          'category',
+          'policySummary',
+          'rows',
+          'fullEnglishMessage',
+          'fullPortugueseMessage',
+          'pathReplies'
+        ])
+        && data.reply.detectedScenario is string
+        && data.reply.detectedScenario.size() <= 200
+        && data.reply.category is string
+        && data.reply.category.size() <= 80
+        && data.reply.policySummary is string
+        && data.reply.policySummary.size() <= 1000
+        && data.reply.rows is list
+        && data.reply.rows.size() >= 1
+        && data.reply.rows.size() <= 40
+        && data.reply.rows[0] is map
+        && data.reply.fullEnglishMessage is string
+        && data.reply.fullEnglishMessage.size() <= 8000
+        && data.reply.fullPortugueseMessage is string
+        && data.reply.fullPortugueseMessage.size() <= 8000
+        && (!('pathReplies' in data.reply) || (data.reply.pathReplies is list && data.reply.pathReplies.size() <= 10 && (data.reply.pathReplies.size() == 0 || data.reply.pathReplies[0] is map)))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStoreRule(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'topic',
+          'english',
+          'portuguese',
+          'isPrimary',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'topic',
+          'english',
+          'portuguese',
+          'isPrimary',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.topic is string
+        && data.topic.size() >= 1
+        && data.topic.size() <= 160
+        && data.english is string
+        && data.english.size() >= 1
+        && data.english.size() <= 2000
+        && data.portuguese is string
+        && data.portuguese.size() >= 1
+        && data.portuguese.size() <= 2000
+        && data.isPrimary is bool
+        && data.sortOrder is number
+        && data.sortOrder >= 0
+        && data.sortOrder <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'email',
+          'displayName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'email',
+          'displayName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.email is string
+        && data.email.size() <= 254
+        && data.displayName is string
+        && data.displayName.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChatFlowSession(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'title',
+          'orderInput',
+          'tone',
+          'turns',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'orderInput',
+          'trackingNumber',
+          'carrierName',
+          'estimatedDate',
+          'lastUpdateDate',
+          'latestStatus',
+          'issueTopic',
+          'productSpec',
+          'voucherTier',
+          'tone',
+          'turns',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && data.orderInput is string
+        && data.orderInput.size() <= 8000
+        && (!('trackingNumber' in data) || (data.trackingNumber is string && data.trackingNumber.size() <= 80))
+        && (!('carrierName' in data) || (data.carrierName is string && data.carrierName.size() <= 120))
+        && (!('estimatedDate' in data) || (data.estimatedDate is string && data.estimatedDate.size() <= 40))
+        && (!('lastUpdateDate' in data) || (data.lastUpdateDate is string && data.lastUpdateDate.size() <= 40))
+        && (!('latestStatus' in data) || (data.latestStatus is string && data.latestStatus.size() <= 200))
+        && (!('issueTopic' in data) || (data.issueTopic is string && data.issueTopic.size() <= 200))
+        && (!('productSpec' in data) || (data.productSpec is string && data.productSpec.size() <= 300))
+        && (!('voucherTier' in data) || (data.voucherTier is string && data.voucherTier.size() <= 40))
+        && data.tone in ['Standard Polite', 'Extra Empathetic', 'Firm Policy']
+        && data.turns is list
+        && data.turns.size() >= 1
+        && data.turns.size() <= 30
+        && data.turns[0] is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'email',
+          'displayName',
+          'updatedAt'
+        ]);
+
+      match /customScripts/{scriptId} {
+        allow get: if isOwner(userId) && isValidId(scriptId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(scriptId)
+          && isValidCustomScript(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(scriptId)
+          && isValidCustomScript(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title',
+            'category',
+            'whenToUse',
+            'policyRule',
+            'sampleInput',
+            'rows',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(scriptId);
+      }
+
+      match /savedCases/{caseId} {
+        allow get: if isOwner(userId) && isValidId(caseId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(caseId)
+          && isValidSavedCase(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(caseId)
+          && isValidSavedCase(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'rawInput',
+            'trackingNumber',
+            'estimatedDate',
+            'tone',
+            'reply',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(caseId);
+      }
+
+      match /storeRules/{ruleId} {
+        allow get: if isOwner(userId) && isValidId(ruleId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(ruleId)
+          && isValidStoreRule(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(ruleId)
+          && isValidStoreRule(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'topic',
+            'english',
+            'portuguese',
+            'isPrimary',
+            'sortOrder',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(ruleId);
+      }
+
+      match /chatFlows/{flowId} {
+        allow get: if isOwner(userId) && isValidId(flowId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(flowId)
+          && isValidChatFlowSession(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(flowId)
+          && isValidChatFlowSession(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title',
+            'orderInput',
+            'trackingNumber',
+            'carrierName',
+            'estimatedDate',
+            'lastUpdateDate',
+            'latestStatus',
+            'issueTopic',
+            'productSpec',
+            'voucherTier',
+            'tone',
+            'turns',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(flowId);
+      }
+    }
+  }
+}

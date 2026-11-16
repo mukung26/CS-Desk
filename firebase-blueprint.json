@@ -1,0 +1,347 @@
+{
+  "entities": {
+    "CustomScript": {
+      "title": "CustomScript",
+      "description": "Agent-created or customized bilingual Shopee CS response script stored in Cloud Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID owning this custom script."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Short scenario title."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Delivery", "Delayed", "Product", "Refund", "General", "Platform"],
+          "description": "Scenario category."
+        },
+        "whenToUse": {
+          "type": "string",
+          "maxLength": 600,
+          "description": "Guidance on when the agent should use this script."
+        },
+        "policyRule": {
+          "type": "string",
+          "maxLength": 800,
+          "description": "Summary of the enforced store policy rule."
+        },
+        "sampleInput": {
+          "type": "string",
+          "maxLength": 2500,
+          "description": "Example customer inquiry or order input."
+        },
+        "rows": {
+          "type": "array",
+          "description": "Sentence-by-sentence bilingual script rows."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "title",
+        "category",
+        "whenToUse",
+        "policyRule",
+        "sampleInput",
+        "rows",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavedCase": {
+      "title": "SavedCase",
+      "description": "Saved customer support case and bilingual generated reply persisted in Cloud Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID owning this saved case."
+        },
+        "rawInput": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000,
+          "description": "Original order paste and customer concern."
+        },
+        "trackingNumber": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Optional order tracking code."
+        },
+        "estimatedDate": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional estimated delivery date."
+        },
+        "tone": {
+          "type": "string",
+          "enum": ["Standard Polite", "Extra Empathetic", "Firm Policy"],
+          "description": "Tone used for generation."
+        },
+        "reply": {
+          "type": "object",
+          "description": "Structured bilingual GeneratedReply payload."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "rawInput",
+        "tone",
+        "reply",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StoreRule": {
+      "title": "StoreRule",
+      "description": "Bilingual Shopee Brazil store policy rule synced to Cloud Firestore across devices.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID owning this store rule."
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Policy area title."
+        },
+        "english": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Rule summary in English."
+        },
+        "portuguese": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Customer guidance in Brazilian Portuguese."
+        },
+        "isPrimary": {
+          "type": "boolean",
+          "description": "Highlights primary store policy."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Display order index."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "topic",
+        "english",
+        "portuguese",
+        "isPrimary",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Authenticated agent profile synced on Google sign-in.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID."
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "description": "Verified Google account email."
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Agent display name."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "First sign-in timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Latest sign-in timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "email",
+        "displayName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ChatFlowSession": {
+      "title": "ChatFlowSession",
+      "description": "Multi-turn live Chat Flow conversation persisted in Cloud Firestore across PCs.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID owning this Chat Flow session."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Short label summarizing the order or scenario."
+        },
+        "orderInput": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "Original order paste and opening concern."
+        },
+        "trackingNumber": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Optional tracking number."
+        },
+        "carrierName": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Optional assigned carrier."
+        },
+        "estimatedDate": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional estimated delivery date."
+        },
+        "lastUpdateDate": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional last logistics update date."
+        },
+        "latestStatus": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Optional latest order/tracking status."
+        },
+        "issueTopic": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Optional issue topic."
+        },
+        "productSpec": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional product spec note."
+        },
+        "voucherTier": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional voucher tier."
+        },
+        "tone": {
+          "type": "string",
+          "enum": ["Standard Polite", "Extra Empathetic", "Firm Policy"],
+          "description": "Selected reply tone."
+        },
+        "turns": {
+          "type": "array",
+          "description": "Ordered multi-turn ChatFlowTurn objects."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "title",
+        "orderInput",
+        "tone",
+        "turns",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Authenticated user account profile."
+    },
+    "/users/{userId}/customScripts/{scriptId}": {
+      "schema": {
+        "$ref": "#/entities/CustomScript"
+      },
+      "description": "Per-user cloud custom CS scripts synced across all PCs."
+    },
+    "/users/{userId}/savedCases/{caseId}": {
+      "schema": {
+        "$ref": "#/entities/SavedCase"
+      },
+      "description": "Per-user cloud saved reply history synced across all PCs."
+    },
+    "/users/{userId}/storeRules/{ruleId}": {
+      "schema": {
+        "$ref": "#/entities/StoreRule"
+      },
+      "description": "Per-user cloud store CS rules synced across all PCs."
+    },
+    "/users/{userId}/chatFlows/{flowId}": {
+      "schema": {
+        "$ref": "#/entities/ChatFlowSession"
+      },
+      "description": "Per-user cloud multi-turn Chat Flow sessions synced across all PCs."
+    }
+  }
+}
