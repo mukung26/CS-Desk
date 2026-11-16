@@ -45,6 +45,10 @@
           "type": "array",
           "description": "Optional branching CX response paths for multi-stage scenarios."
         },
+        "guideIds": {
+          "type": "array",
+          "description": "Optional attached Shopee Brazil visual guide IDs."
+        },
         "sortOrder": {
           "type": "number",
           "description": "Display ordering index for Script Library scenarios."
@@ -270,6 +274,81 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "UsageStat": {
+      "title": "UsageStat",
+      "description": "Tracks how often a Script Library scenario or Store Rule is accessed or applied by the Reply Generator.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated user UID owning this usage statistic."
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["script", "rule"],
+          "description": "Whether the tracked item is a Script Library scenario or a Store Rule."
+        },
+        "itemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Document ID of the referenced script scenario or store rule."
+        },
+        "itemTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Human-readable scenario title or store rule topic."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Scenario category or Primary/Policy label."
+        },
+        "appliedCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Number of times the Reply Generator applied this item when generating a response."
+        },
+        "accessedCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Number of times an agent accessed or loaded this item into the Reply Generator."
+        },
+        "lastEvent": {
+          "type": "string",
+          "enum": ["applied", "accessed"],
+          "description": "Most recent tracking event type."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "itemType",
+        "itemId",
+        "itemTitle",
+        "category",
+        "appliedCount",
+        "accessedCount",
+        "lastEvent",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -296,6 +375,12 @@
         "$ref": "#/entities/ChatFlowSession"
       },
       "description": "Per-user cloud multi-turn Chat Flow sessions synced across all PCs."
+    },
+    "/users/{userId}/usageStats/{statId}": {
+      "schema": {
+        "$ref": "#/entities/UsageStat"
+      },
+      "description": "Per-user cloud usage statistics tracking how often scripts and store rules are accessed or applied."
     }
   }
 }

@@ -15,6 +15,7 @@ import {
   ScriptPath,
   ScriptRow,
   ScriptScenario,
+  UsageTrackEventPayload,
 } from "../types/cs";
 import {
   PlaceholderValues,
@@ -26,6 +27,7 @@ import {
   detectDefaultPathForScenario,
   parseShopeeOrderPaste,
 } from "../utils/shopeeParser";
+import { VisualGuideStrip } from "./VisualGuideStrip";
 
 interface ScriptLibraryProps {
   scenarios: ScriptScenario[];
@@ -35,6 +37,7 @@ interface ScriptLibraryProps {
   onSignIn: () => void;
   onSelectScenario: (id: string | null) => void;
   onUseInGenerator: (sampleInput: string) => void;
+  onTrackUsageEvents?: (events: UsageTrackEventPayload[]) => Promise<void> | void;
   onAddCustomScenario: (
     scenario: Omit<ScriptScenario, "id" | "number">
   ) => void | Promise<void>;
@@ -44,6 +47,7 @@ interface ScriptLibraryProps {
   ) => void | Promise<void>;
   onDeleteCustomScenario: (id: string) => void | Promise<void>;
   onResetDefaultScripts?: () => void | Promise<void>;
+  onOpenVisualGuides?: () => void;
 }
 
 export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
@@ -54,10 +58,12 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
   onSignIn,
   onSelectScenario,
   onUseInGenerator,
+  onTrackUsageEvents,
   onAddCustomScenario,
   onUpdateCustomScenario,
   onDeleteCustomScenario,
   onResetDefaultScripts,
+  onOpenVisualGuides,
 }) => {
   const [pasteInput, setPasteInput] = useState("");
   const [detectedOrderSn, setDetectedOrderSn] = useState<string | null>(null);
@@ -300,6 +306,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
         `${newTitle.trim()} > Customer needs help with this concern.`,
       rows: cleanedRows,
       ...(editingSource?.paths ? { paths: editingSource.paths } : {}),
+      ...(editingSource?.guideIds ? { guideIds: editingSource.guideIds } : {}),
       sortOrder: editingSource
         ? editingSource.sortOrder ?? editingSource.number
         : scenarios.reduce(
@@ -337,13 +344,13 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
   return (
     <div className="space-y-6">
       {/* Auto-Fill Paste & Live Placeholder Bar */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Shopee CS Quick Script Library
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
               {isSignedIn
                 ? isSyncing
                   ? "Syncing your Script Library from Cloud Firestore..."
@@ -351,7 +358,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 : (
                   <>
                     Paste{" "}
-                    <span className="font-mono text-xs text-slate-700">
+                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
                       Order / Product Info &gt; Customer Concern
                     </span>{" "}
                     or a full Shopee Seller Center dump to auto-fill every script table in real time.
@@ -364,7 +371,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectScenario(null)}
-                className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Show All ({scenarios.length})
               </button>
@@ -372,7 +379,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
             <button
               type="button"
               onClick={handleClearPasteAndPlaceholders}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Clear
@@ -381,7 +388,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               <button
                 type="button"
                 onClick={() => void onResetDefaultScripts()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Restore Defaults
               </button>
@@ -424,7 +431,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label
               htmlFor="library-paste-input"
-              className="text-xs font-medium text-slate-700"
+              className="text-xs font-medium text-slate-700 dark:text-slate-300"
             >
               Order / Product Info &gt; Customer Concern (supports full Shopee Seller Center paste)
             </label>
@@ -438,12 +445,12 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                   Load Delivery Inquiry Example
                 </button>
               )}
-              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={autoFocusMatched}
                   onChange={(e) => setAutoFocusMatched(e.target.checked)}
-                  className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
+                  className="rounded border-slate-300 dark:border-slate-600 text-[#EE4D2D] focus:ring-[#EE4D2D]"
                 />
                 Auto-focus matched script
               </label>
@@ -456,7 +463,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
             value={pasteInput}
             onChange={(e) => handlePasteChange(e.target.value)}
             placeholder="Paste your Shopee Seller Center order + tracking log and CX> concern here to auto-fill dates, tracking code, status, and match the right script..."
-            className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/70 px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
           />
 
           {(detectedOrderSn ||
@@ -464,7 +471,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
             placeholders.carrier ||
             placeholders.tracking ||
             matchedScenarioObj) && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
               <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] tabular-nums">
                 {[
                   detectedOrderSn ? `Order ${detectedOrderSn}` : null,
@@ -489,7 +496,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 <div className="flex items-center gap-3">
                   <span>
                     Matched:{" "}
-                    <strong className="font-medium text-slate-900">
+                    <strong className="font-medium text-slate-900 dark:text-slate-100">
                       {String(matchedScenarioObj.number).padStart(2, "0")}.{" "}
                       {matchedScenarioObj.title}
                     </strong>
@@ -505,8 +512,19 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                   )}
                   <button
                     type="button"
-                    onClick={() => onUseInGenerator(pasteInput)}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-[#EE4D2D] cursor-pointer"
+                    onClick={() => {
+                      onTrackUsageEvents?.([
+                        {
+                          itemType: "script",
+                          itemId: matchedScenarioObj.id,
+                          itemTitle: matchedScenarioObj.title,
+                          category: matchedScenarioObj.category,
+                          event: "accessed",
+                        },
+                      ]);
+                      onUseInGenerator(pasteInput);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-[#EE4D2D] cursor-pointer"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     Refine with AI
@@ -520,7 +538,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
         {/* Auto-Populated Placeholder Fields */}
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               Last Update [DATE]
             </label>
             <input
@@ -534,11 +552,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 }))
               }
               placeholder="03/11/2026"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               Est. Delivery [DATE]
             </label>
             <input
@@ -552,11 +570,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 }))
               }
               placeholder="24/11/2026"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               [TRACKING]
             </label>
             <input
@@ -566,11 +584,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setPlaceholders((p) => ({ ...p, tracking: e.target.value }))
               }
               placeholder="AJ261009127752101"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs font-mono focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               [STATUS]
             </label>
             <input
@@ -580,11 +598,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setPlaceholders((p) => ({ ...p, status: e.target.value }))
               }
               placeholder="em trânsito"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               [ISSUE TOPIC]
             </label>
             <input
@@ -594,11 +612,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setPlaceholders((p) => ({ ...p, topic: e.target.value }))
               }
               placeholder="Shopee Coins / Pix"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               [VOUCHER] (≤ R$25 tier)
             </label>
             <input
@@ -608,11 +626,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setPlaceholders((p) => ({ ...p, voucher: e.target.value }))
               }
               placeholder="R$15"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
               [INSERT SPEC]
             </label>
             <input
@@ -622,7 +640,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setPlaceholders((p) => ({ ...p, spec: e.target.value }))
               }
               placeholder="Bivolt 110V/220V"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
             />
           </div>
         </div>
@@ -632,10 +650,10 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
       {showAddForm && (
         <form
           onSubmit={handleCreateCustom}
-          className="bg-white border border-slate-200 rounded-xl p-5 space-y-4"
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4"
         >
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-900">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               {editingScenarioId
                 ? "Edit Cloud Custom Script"
                 : "Create Cloud Custom Bilingual Script"}
@@ -644,7 +662,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Scenario Title
               </label>
               <input
@@ -653,11 +671,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g., Missing Accessory in Package"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Category
               </label>
               <select
@@ -665,7 +683,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 onChange={(e) =>
                   setNewCategory(e.target.value as ScenarioCategory)
                 }
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:border-[#EE4D2D] focus:outline-none"
               >
                 <option value={ScenarioCategory.GENERAL}>General</option>
                 <option value={ScenarioCategory.DELIVERY}>Delivery</option>
@@ -679,7 +697,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 When to Use
               </label>
               <input
@@ -687,11 +705,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 value={newWhenToUse}
                 onChange={(e) => setNewWhenToUse(e.target.value)}
                 placeholder="When customer reports a missing cable or part"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Policy Note
               </label>
               <input
@@ -699,14 +717,14 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 value={newPolicyRule}
                 onChange={(e) => setNewPolicyRule(e.target.value)}
                 placeholder="Ask for unboxing photo; direct to Return/Refund if unresolved"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
           </div>
 
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-700">
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Sentence Rows
               </span>
               <button
@@ -736,7 +754,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     setNewRows(next);
                   }}
                   placeholder="Section"
-                  className="md:col-span-2 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
+                  className="md:col-span-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
                 />
                 <input
                   type="text"
@@ -747,7 +765,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     setNewRows(next);
                   }}
                   placeholder="English sentence (for you)"
-                  className="md:col-span-5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
+                  className="md:col-span-5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
                 />
                 <input
                   type="text"
@@ -758,7 +776,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     setNewRows(next);
                   }}
                   placeholder="Portuguese sentence (send to CX)"
-                  className="md:col-span-5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs"
+                  className="md:col-span-5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#EE4D2D] focus:outline-none"
                 />
               </div>
             ))}
@@ -771,7 +789,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 setShowAddForm(false);
                 setEditingScenarioId(null);
               }}
-              className="px-3.5 py-2 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
             >
               Cancel
             </button>
@@ -799,11 +817,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
           return (
             <article
               key={scenario.id}
-              className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden"
             >
-              <div className="px-5 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <span className="font-mono tabular-nums font-semibold text-[#EE4D2D]">
                       {String(scenario.number).padStart(2, "0")}
                     </span>
@@ -816,11 +834,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     {scenario.isCustom && (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span className="text-slate-700 font-medium">Custom</span>
+                        <span className="text-slate-700 dark:text-slate-300 font-medium">Custom</span>
                       </>
                     )}
                   </div>
-                  <h2 className="text-base font-semibold text-slate-900 mt-1">
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 mt-1">
                     {scenario.title}
                   </h2>
                 </div>
@@ -829,7 +847,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                   <button
                     type="button"
                     onClick={() => openEditOrDuplicateForm(scenario, true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                     Edit
@@ -838,7 +856,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     <button
                       type="button"
                       onClick={() => void onDeleteCustomScenario(scenario.id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       Delete
@@ -847,7 +865,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     <button
                       type="button"
                       onClick={() => openEditOrDuplicateForm(scenario, false)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       <Cloud className="w-3.5 h-3.5" />
                       Duplicate
@@ -859,9 +877,18 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                       const aiInput = activePath
                         ? `${scenario.sampleInput}\n\nCX Response Stage: ${activePath.label}${activePath.cxTrigger ? ` (${activePath.cxTrigger})` : ""}`
                         : scenario.sampleInput;
+                      onTrackUsageEvents?.([
+                        {
+                          itemType: "script",
+                          itemId: scenario.id,
+                          itemTitle: scenario.title,
+                          category: scenario.category,
+                          event: "accessed",
+                        },
+                      ]);
                       onUseInGenerator(aiInput);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     Customize with AI
@@ -869,11 +896,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                   <button
                     type="button"
                     onClick={() => void handleCopyTable(scenario)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     {copiedKey === `table-${scenario.id}` ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         Copied Table
                       </>
                     ) : (
@@ -901,22 +928,22 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               </div>
 
               {/* Quiet Context Summary */}
-              <div className="px-5 py-3 bg-slate-50/70 border-b border-slate-200 text-xs text-slate-600 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
+              <div className="px-5 py-3 bg-slate-50/70 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
                 <div>
-                  <span className="font-semibold text-slate-800">When to use: </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">When to use: </span>
                   {scenario.whenToUse}
                 </div>
-                <div className="sm:border-l sm:border-slate-200 sm:pl-6">
-                  <span className="font-semibold text-slate-800">Rule: </span>
+                <div className="sm:border-l sm:border-slate-200 dark:sm:border-slate-700 sm:pl-6">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">Rule: </span>
                   {scenario.policyRule}
                 </div>
               </div>
 
               {/* Interactive CX Response Button Path Selector */}
               {scenario.paths && scenario.paths.length > 0 && activePath && (
-                <div className="px-5 py-3 bg-white border-b border-slate-200 space-y-2">
+                <div className="px-5 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-700 mr-1">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 mr-1">
                       CX Response Path:
                     </span>
                     {scenario.paths.map((path) => {
@@ -934,7 +961,7 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                           className={
                             isActive
                               ? "px-3 py-1.5 text-xs font-medium rounded-lg border border-[#EE4D2D] bg-[#EE4D2D] text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                              : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                              : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                           }
                         >
                           {path.label}
@@ -943,8 +970,8 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                     })}
                   </div>
                   {activePath.cxTrigger && (
-                    <p className="text-xs text-slate-500">
-                      <span className="font-medium text-slate-700">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
                         Use when:{" "}
                       </span>
                       {activePath.cxTrigger}
@@ -957,14 +984,14 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                    <tr className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
                       <th className="py-2.5 px-4 w-40">Section</th>
                       <th className="py-2.5 px-4 w-[38%]">English (for you)</th>
                       <th className="py-2.5 px-4 w-[42%]">Portuguese (send to CX)</th>
                       <th className="py-2.5 px-4 w-20 text-right">Copy</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 text-sm">
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
                     {activeRows.map((row, idx) => {
                       const resolvedEn = applyPlaceholders(
                         row.english,
@@ -983,11 +1010,11 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                         key={rowKey}
                         className={
                           row.highlight
-                            ? "bg-orange-50/50 hover:bg-orange-50/75 transition-colors"
-                            : "hover:bg-slate-50/80 transition-colors"
+                            ? "bg-orange-50/50 dark:bg-[#EE4D2D]/12 hover:bg-orange-50/75 dark:hover:bg-[#EE4D2D]/20 transition-colors"
+                            : "hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
                         }
                       >
-                        <td className="py-3 px-4 align-top font-medium text-slate-900 text-xs">
+                        <td className="py-3 px-4 align-top font-medium text-slate-900 dark:text-slate-100 text-xs">
                           <div>{row.section}</div>
                           {row.highlight && (
                             <div className="text-[11px] font-semibold text-[#EE4D2D] mt-0.5">
@@ -995,10 +1022,10 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-4 align-top text-slate-600 leading-relaxed">
+                        <td className="py-3 px-4 align-top text-slate-600 dark:text-slate-400 leading-relaxed">
                           {resolvedEn}
                         </td>
-                        <td className="py-3 px-4 align-top text-slate-900 leading-relaxed">
+                        <td className="py-3 px-4 align-top text-slate-900 dark:text-slate-100 leading-relaxed">
                           {resolvedPt}
                         </td>
                         <td className="py-3 px-4 align-top text-right">
@@ -1010,10 +1037,10 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                               });
                             }}
                             title="Copy Portuguese sentence"
-                            className="inline-flex items-center justify-center p-1.5 text-slate-600 bg-white border border-slate-200 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center p-1.5 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
                           >
                             {copiedKey === rowKey ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             ) : (
                               <Copy className="w-3.5 h-3.5" />
                             )}
@@ -1025,6 +1052,12 @@ export const ScriptLibrary: React.FC<ScriptLibraryProps> = ({
                 </tbody>
               </table>
             </div>
+
+            <VisualGuideStrip
+              guideIds={scenario.guideIds}
+              heading="Related Shopee BR Visual Guides"
+              onBrowseAll={onOpenVisualGuides}
+            />
           </article>
           );
         })}

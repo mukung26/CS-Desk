@@ -10,6 +10,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
       'Customer says their address is correct but wants to add or remove a description (e.g., old house number, "Casa 3").',
     policyRule:
       "Delivery goes strictly to the registered Shopee shipping label address; advise updating in-app before ship-out.",
+    guideIds: ["change-address"],
     sampleInput:
       "Order #261112BR89X1 (Wireless Mouse) > Customer says the street is right, but wants the courier to ignore 'Casa 3' in the address description because it's from their old house.",
     rows: [
@@ -119,9 +120,10 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
     title: "Product Defect / Issue (Ask Video)",
     category: ScenarioCategory.PRODUCT,
     whenToUse:
-      "Customer reports a product problem (not working, shutting off, broken, etc.). Never promise immediate refund—always ask for video first.",
+      "Customer reports a product problem (not working, shutting off, broken, etc.). Always request a video or photo first and say our team will review it—never guarantee a return or refund on the spot.",
     policyRule:
-      "Request a short demonstration video first and offer basic troubleshooting (power, connections, ventilation). No direct store full refund.",
+      "Never promise an immediate return/refund. Request a short video/photo first for team review and share all 4 checks (1. Power supply, 2. Overheating, 3. Loose connections, 4. Short circuit).",
+    guideIds: ["return-refund", "refund-sla"],
     sampleInput:
       "Order #261110BR44K2 (Mini LED Projector) > CX says it turns on for 10 seconds and then shuts off by itself.",
     rows: [
@@ -133,7 +135,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
       {
         section: "Request video",
         english:
-          "To better assist you and verify the issue, could you please provide a short video showing the problem? This will help us understand exactly what is happening.",
+          "To better assist you and verify the issue, could you please provide us with a short video showing the problem? This will help us understand exactly what is happening.",
         portuguese:
           "Para melhor assisti-lo e verificar o problema, você poderia nos enviar um vídeo curto mostrando o problema? Isso nos ajudará a entender exatamente o que está acontecendo.",
         highlight: true,
@@ -144,45 +146,59 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
         portuguese: "Enquanto isso, aqui estão algumas causas comuns que podem ser simples de resolver:",
       },
       {
-        section: "Power / Connection",
+        section: "1. Power supply",
         english:
-          "Please check that your power supply and all connections are correct and secure. A loose connection or insufficient power can cause sudden issues.",
+          "Please check that your power supply is providing the correct voltage and sufficient current. If the power is too low or unstable, the protection circuit may shut the item off.",
         portuguese:
-          "Por favor, verifique se a fonte de alimentação e todas as conexões estão corretas e firmes. Uma conexão solta ou energia insuficiente pode causar problemas súbitos.",
+          "Por favor, verifique se a sua fonte de alimentação está fornecendo a voltagem correta e corrente suficiente. Se a energia estiver muito baixa ou instável, o circuito de proteção pode desligar o item.",
       },
       {
-        section: "Overheating",
+        section: "2. Overheating",
         english:
-          "If the item gets too hot, it may trigger protection and shut down. Make sure it has enough ventilation.",
+          "If the item gets too hot, it may trigger overheating protection and shut down. Make sure it has enough ventilation and is not enclosed in a tight space.",
         portuguese:
-          "Se o item esquentar demais, pode acionar a proteção e desligar. Certifique-se de que tenha ventilação suficiente.",
+          "Se o item esquentar demais, pode acionar a proteção contra superaquecimento e desligar. Certifique-se de que tenha ventilação suficiente e não esteja fechado em um espaço apertado.",
+      },
+      {
+        section: "3. Loose connections",
+        english:
+          "Please check that all wire connections and cables are securely connected. A loose connection can cause sudden power loss.",
+        portuguese:
+          "Por favor, verifique se todas as conexões de fios e cabos estão firmemente conectadas. Uma conexão solta pode causar perda súbita de energia.",
+      },
+      {
+        section: "4. Short circuit",
+        english:
+          "If any wires are touching each other or the item is touching a metal surface, it may trigger short circuit protection. Please check that wires are properly insulated and separated.",
+        portuguese:
+          "Se algum fio estiver se tocando ou o item estiver tocando uma superfície metálica, pode acionar a proteção contra curto-circuito. Por favor, verifique se os fios estão devidamente isolados e separados.",
       },
       {
         section: "Next steps",
         english:
-          "Please try checking these points first. If the problem continues, please send the video and we will review it with our team to find the best solution.",
+          "Please try checking these points first. If the problem continues after verifying these items, please send us the video and we will review it with our team to find the best solution for you.",
         portuguese:
-          "Por favor, tente verificar esses pontos primeiro. Se o problema continuar, nos envie o vídeo e revisaremos com a nossa equipe para encontrar a melhor solução.",
+          "Por favor, tente verificar esses pontos primeiro. Se o problema continuar após verificar esses itens, nos envie o vídeo e revisaremos com a nossa equipe para encontrar a melhor solução para você.",
         highlight: true,
       },
       {
         section: "Assurance",
         english:
-          "Rest assured that we are committed to resolving this for you, and your purchase remains protected by Shopee Guarantee.",
+          "Rest assured that our team will review your case carefully once you send the video, and your purchase remains protected by Shopee Guarantee.",
         portuguese:
-          "Fique tranquilo, pois estamos comprometidos em resolver isso para você e a sua compra continua protegida pela Garantia Shopee.",
+          "Fique tranquilo, pois a nossa equipe analisará o seu caso com atenção assim que você enviar o vídeo, e a sua compra continua protegida pela Garantia Shopee.",
         highlight: true,
       },
       {
         section: "Closing",
-        english: "We appreciate your cooperation and hope we can resolve this quickly.",
-        portuguese: "Agradecemos a sua cooperação e esperamos poder resolver isso rapidamente.",
+        english: "We appreciate your cooperation and hope we can resolve this issue for you quickly.",
+        portuguese: "Agradecemos a sua cooperação e esperamos poder resolver esse problema para você rapidamente.",
       },
     ],
     paths: [
       {
         id: "initial",
-        label: "1. Initial Reply (Ask Video + Checks)",
+        label: "1. Initial Reply (Ask Video + 4 Checks)",
         cxTrigger: "CX reports the product has a defect or stopped working",
         rows: [
           {
@@ -193,7 +209,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
           {
             section: "Request video",
             english:
-              "To better assist you and verify the issue, could you please provide a short video showing the problem? This will help us understand exactly what is happening.",
+              "To better assist you and verify the issue, could you please provide us with a short video showing the problem? This will help us understand exactly what is happening.",
             portuguese:
               "Para melhor assisti-lo e verificar o problema, você poderia nos enviar um vídeo curto mostrando o problema? Isso nos ajudará a entender exatamente o que está acontecendo.",
             highlight: true,
@@ -204,39 +220,53 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
             portuguese: "Enquanto isso, aqui estão algumas causas comuns que podem ser simples de resolver:",
           },
           {
-            section: "Power / Connection",
+            section: "1. Power supply",
             english:
-              "Please check that your power supply and all connections are correct and secure. A loose connection or insufficient power can cause sudden issues.",
+              "Please check that your power supply is providing the correct voltage and sufficient current. If the power is too low or unstable, the protection circuit may shut the item off.",
             portuguese:
-              "Por favor, verifique se a fonte de alimentação e todas as conexões estão corretas e firmes. Uma conexão solta ou energia insuficiente pode causar problemas súbitos.",
+              "Por favor, verifique se a sua fonte de alimentação está fornecendo a voltagem correta e corrente suficiente. Se a energia estiver muito baixa ou instável, o circuito de proteção pode desligar o item.",
           },
           {
-            section: "Overheating",
+            section: "2. Overheating",
             english:
-              "If the item gets too hot, it may trigger protection and shut down. Make sure it has enough ventilation.",
+              "If the item gets too hot, it may trigger overheating protection and shut down. Make sure it has enough ventilation and is not enclosed in a tight space.",
             portuguese:
-              "Se o item esquentar demais, pode acionar a proteção e desligar. Certifique-se de que tenha ventilação suficiente.",
+              "Se o item esquentar demais, pode acionar a proteção contra superaquecimento e desligar. Certifique-se de que tenha ventilação suficiente e não esteja fechado em um espaço apertado.",
+          },
+          {
+            section: "3. Loose connections",
+            english:
+              "Please check that all wire connections and cables are securely connected. A loose connection can cause sudden power loss.",
+            portuguese:
+              "Por favor, verifique se todas as conexões de fios e cabos estão firmemente conectadas. Uma conexão solta pode causar perda súbita de energia.",
+          },
+          {
+            section: "4. Short circuit",
+            english:
+              "If any wires are touching each other or the item is touching a metal surface, it may trigger short circuit protection. Please check that wires are properly insulated and separated.",
+            portuguese:
+              "Se algum fio estiver se tocando ou o item estiver tocando uma superfície metálica, pode acionar a proteção contra curto-circuito. Por favor, verifique se os fios estão devidamente isolados e separados.",
           },
           {
             section: "Next steps",
             english:
-              "Please try checking these points first. If the problem continues, please send the video and we will review it with our team to find the best solution.",
+              "Please try checking these points first. If the problem continues after verifying these items, please send us the video and we will review it with our team to find the best solution for you.",
             portuguese:
-              "Por favor, tente verificar esses pontos primeiro. Se o problema continuar, nos envie o vídeo e revisaremos com a nossa equipe para encontrar a melhor solução.",
+              "Por favor, tente verificar esses pontos primeiro. Se o problema continuar após verificar esses itens, nos envie o vídeo e revisaremos com a nossa equipe para encontrar a melhor solução para você.",
             highlight: true,
           },
           {
             section: "Assurance",
             english:
-              "Rest assured that we are committed to resolving this for you, and your purchase remains protected by Shopee Guarantee.",
+              "Rest assured that our team will review your case carefully once you send the video, and your purchase remains protected by Shopee Guarantee.",
             portuguese:
-              "Fique tranquilo, pois estamos comprometidos em resolver isso para você e a sua compra continua protegida pela Garantia Shopee.",
+              "Fique tranquilo, pois a nossa equipe analisará o seu caso com atenção assim que você enviar o vídeo, e a sua compra continua protegida pela Garantia Shopee.",
             highlight: true,
           },
           {
             section: "Closing",
-            english: "We appreciate your cooperation and hope we can resolve this quickly.",
-            portuguese: "Agradecemos a sua cooperação e esperamos poder resolver isso rapidamente.",
+            english: "We appreciate your cooperation and hope we can resolve this issue for you quickly.",
+            portuguese: "Agradecemos a sua cooperação e esperamos poder resolver esse problema para você rapidamente.",
           },
         ],
       },
@@ -284,6 +314,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
       'Tracking shows "inspeção na alfândega" or similar for several days. Do not mention "lost" or suggest refund unless CX asks.',
     policyRule:
       'Must state both required phrases: "we follow up this to courier" and "we expedite follow your order to courier".',
+    guideIds: ["return-refund", "find-order"],
     sampleInput:
       "Order #261028BR11M9 (Mechanical Keyboard, Tracking BR2699817253BR) > Tracking has been stuck at 'inspeção na alfândega' for 6 days and CX is worried.",
     rows: [
@@ -319,9 +350,9 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
       {
         section: "Assurance",
         english:
-          "Rest assured your order has not been lost and your payment remains protected by Shopee Guarantee while awaiting final customs clearance before local distribution.",
+          "No worries—any delivery date shown is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your order has not been lost and your payment remains protected by Shopee Guarantee while awaiting final customs clearance before local distribution.",
         portuguese:
-          "Fique tranquilo, pois o seu pedido não foi perdido e o seu pagamento continua protegido pela Garantia Shopee enquanto aguarda a liberação final da alfândega antes da distribuição local.",
+          "Fique tranquilo, pois qualquer data exibida é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pedido não foi perdido e o seu pagamento continua protegido pela Garantia Shopee enquanto aguarda a liberação final da alfândega antes da distribuição local.",
         highlight: true,
       },
       {
@@ -363,9 +394,9 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
           {
             section: "Assurance",
             english:
-              "Rest assured your order has not been lost and your payment remains protected by Shopee Guarantee while awaiting final customs clearance before local distribution.",
+              "No worries—any delivery date shown is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your order has not been lost and your payment remains protected by Shopee Guarantee while awaiting final customs clearance before local distribution.",
             portuguese:
-              "Fique tranquilo, pois o seu pedido não foi perdido e o seu pagamento continua protegido pela Garantia Shopee enquanto aguarda a liberação final da alfândega antes da distribuição local.",
+              "Fique tranquilo, pois qualquer data exibida é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pedido não foi perdido e o seu pagamento continua protegido pela Garantia Shopee enquanto aguarda a liberação final da alfândega antes da distribuição local.",
             highlight: true,
           },
           {
@@ -417,6 +448,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
       'CX asks "when does it arrive?" or "where is my order?" while the order is in transit or experiencing a minor courier delay.',
     policyRule:
       "Share latest update, assigned courier, estimated delivery date, tracking number, inform that we follow up with the assigned courier, and provide warm reassurance.",
+    guideIds: ["find-order"],
     sampleInput: `Order SN:
 2610097GCAVNED
 DRAGON RANEE Lip Gloss 4 Pcs Conjunto Caixa
@@ -448,6 +480,13 @@ inform that we will follow up this to the courier assigned and provide assurance
           "O seu pedido está atualmente em trânsito. De acordo com o nosso sistema, a última atualização foi em [DATA], e o pacote está a caminho com a transportadora responsável para entrega no seu endereço.",
       },
       {
+        section: "Normal gap",
+        english:
+          "It is completely normal for international shipments to have a gap in tracking updates while traveling between countries. The next update usually appears once the package arrives at the next hub.",
+        portuguese:
+          "É completamente normal que envios internacionais tenham uma lacuna nas atualizações de rastreamento enquanto viajam entre países. A próxima atualização normalmente aparece quando o pacote chega ao próximo centro.",
+      },
+      {
         section: "Courier follow-up",
         english:
           "Please rest assured that we follow up this to courier and we expedite follow your order to courier assigned to monitor the delivery progress closely.",
@@ -458,9 +497,9 @@ inform that we will follow up this to the courier assigned and provide assurance
       {
         section: "Assurance & Est. Delivery",
         english:
-          "Rest assured your package is safe, your payment is protected by Shopee Guarantee, and the estimated delivery date is [DATE]. Please kindly wait a little longer as it completes the final route.",
+          "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and your payment is protected by Shopee Guarantee while it completes the final route.",
         portuguese:
-          "Fique tranquilo, pois o seu pacote está seguro, o seu pagamento é protegido pela Garantia Shopee e a data estimada de entrega é [DATA]. Por favor, aguarde mais um pouco enquanto ele conclui a rota final.",
+          "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e o seu pagamento é protegido pela Garantia Shopee enquanto ele conclui a rota final.",
         highlight: true,
       },
       {
@@ -493,6 +532,13 @@ inform that we will follow up this to the courier assigned and provide assurance
               "O seu pedido está atualmente em trânsito. De acordo com o nosso sistema, a última atualização foi em [DATA], e o pacote está a caminho com a transportadora responsável para entrega no seu endereço.",
           },
           {
+            section: "Normal gap",
+            english:
+              "It is completely normal for international shipments to have a gap in tracking updates while traveling between countries. The next update usually appears once the package arrives at the next hub.",
+            portuguese:
+              "É completamente normal que envios internacionais tenham uma lacuna nas atualizações de rastreamento enquanto viajam entre países. A próxima atualização normalmente aparece quando o pacote chega ao próximo centro.",
+          },
+          {
             section: "Courier follow-up",
             english:
               "Please rest assured that we follow up this to courier and we expedite follow your order to courier assigned to monitor the delivery progress closely.",
@@ -503,9 +549,9 @@ inform that we will follow up this to the courier assigned and provide assurance
           {
             section: "Assurance & Est. Delivery",
             english:
-              "Rest assured your package is safe, your payment is protected by Shopee Guarantee, and the estimated delivery date is [DATE]. Please kindly wait a little longer as it completes the final route.",
+              "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and your payment is protected by Shopee Guarantee while it completes the final route.",
             portuguese:
-              "Fique tranquilo, pois o seu pacote está seguro, o seu pagamento é protegido pela Garantia Shopee e a data estimada de entrega é [DATA]. Por favor, aguarde mais um pouco enquanto ele conclui a rota final.",
+              "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e o seu pagamento é protegido pela Garantia Shopee enquanto ele conclui a rota final.",
             highlight: true,
           },
           {
@@ -562,6 +608,7 @@ inform that we will follow up this to the courier assigned and provide assurance
       'Tracking shows "DELIVERED" but CX says they never received the package.',
     policyRule:
       "Clarify we are only the seller, ask CX to check with neighbors/family/concierge, and instruct them to tap Return/Refund (Devolução/Reembolso) in Shopee.",
+    guideIds: ["return-refund", "contact-shopee-cs", "refund-sla"],
     sampleInput:
       "Order #261101BR77L4 (Bluetooth Earbuds) > Status shows Delivered yesterday, but customer says nobody delivered anything to their house.",
     rows: [
@@ -695,6 +742,7 @@ inform that we will follow up this to the courier assigned and provide assurance
       "CX asks for a refund while the order is in transit. Choose path based on whether it is beyond or still within the estimated delivery date.",
     policyRule:
       "Acknowledge latest tracking status + courier follow-up, clarify refunds are handled exclusively via Shopee, and provide Shopee Guarantee assurance (within Est. Delivery: refuse or webform; beyond Est. Delivery: tap Return/Refund).",
+    guideIds: ["return-refund", "refund-sla"],
     sampleInput:
       "Order #261015BR90Z8 (Smartwatch Band) > Estimated delivery was Nov 8, no tracking update since Nov 2. Customer demands a full refund now.",
     rows: [
@@ -835,6 +883,7 @@ inform that we will follow up this to the courier assigned and provide assurance
       "CX wants to cancel after the order has already been picked up / shipped (PICKUP_DONE / Picked_Up). Store cannot cancel or refund directly.",
     policyRule:
       "Explain store cannot cancel shipped orders or issue direct refunds; the only way is to refuse delivery upon arrival (or tap Return/Refund when available) or request via Shopee's webform.",
+    guideIds: ["return-refund", "refund-sla"],
     sampleInput: `Order SN:
 26111135ENC0T2
 Ampola Grow Turn para Cuidados com o Couro Cabeludo Cabelo Hidratante 100ml 3,38oz
@@ -1183,6 +1232,13 @@ CX> Cancel order`,
         highlight: true,
       },
       {
+        section: "Assurance",
+        english:
+          "Rest assured your purchase is protected by Shopee Guarantee, and we are always here to help if you need anything else.",
+        portuguese:
+          "Fique tranquilo, pois a sua compra está protegida pela Garantia Shopee e estamos sempre à disposição para ajudar no que precisar.",
+      },
+      {
         section: "Closing",
         english: "If you have any other questions after reviewing the product page, please feel free to ask.",
         portuguese: "Se tiver mais alguma dúvida após revisar a página do produto, sinta-se à vontade para perguntar.",
@@ -1208,6 +1264,13 @@ CX> Cancel order`,
             highlight: true,
           },
           {
+            section: "Assurance",
+            english:
+              "Rest assured your purchase is protected by Shopee Guarantee, and we are always here to help if you need anything else.",
+            portuguese:
+              "Fique tranquilo, pois a sua compra está protegida pela Garantia Shopee e estamos sempre à disposição para ajudar no que precisar.",
+          },
+          {
             section: "Closing",
             english: "If you have any other questions after reviewing the product page, please feel free to ask.",
             portuguese: "Se tiver mais alguma dúvida após revisar a página do produto, sinta-se à vontade para perguntar.",
@@ -1228,6 +1291,13 @@ CX> Cancel order`,
             highlight: true,
           },
           {
+            section: "Assurance",
+            english:
+              "Rest assured your purchase is protected by Shopee Guarantee, and we are always here to help if you need anything else.",
+            portuguese:
+              "Fique tranquilo, pois a sua compra está protegida pela Garantia Shopee e estamos sempre à disposição para ajudar no que precisar.",
+          },
+          {
             section: "Closing",
             english: "Please let us know if we can help with any other details shown on the product page!",
             portuguese: "Nos avise se pudermos ajudar com qualquer outro detalhe exibido na página do produto!",
@@ -1242,8 +1312,9 @@ CX> Cancel order`,
     title: "Out of Scope — Shopee Platform",
     category: ScenarioCategory.PLATFORM,
     whenToUse:
-      "CX asks about Shopee Coins, ShopeePay, app bugs, account issues, vouchers, or installment payment issues.",
+      "CX asks about Shopee Coins, ShopeePay, app bugs, account issues, vouchers, or platform disputes.",
     policyRule: "Politely clarify store scope and redirect to Shopee Help Center in the app.",
+    guideIds: ["contact-shopee-cs", "voucher-wallet", "voucher-steps"],
     sampleInput:
       "Order #261112BR04V8 > Customer says their Pix payment failed twice and their Shopee Coins were deducted without applying the discount.",
     rows: [
@@ -1274,6 +1345,14 @@ CX> Cancel order`,
           'You can access Shopee\'s help center by going to the "Me" tab in the Shopee app, then selecting "Help Center" or "Customer Service" to chat with Shopee\'s support team.',
         portuguese:
           'Você pode acessar o centro de ajuda da Shopee indo na aba "Eu" no aplicativo da Shopee e depois selecionando "Central de Ajuda" ou "Atendimento" para conversar com a equipe de suporte da Shopee.',
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your account and purchases are protected by Shopee Guarantee, and Shopee's support team can resolve platform matters directly for you.",
+        portuguese:
+          "Fique tranquilo, pois a sua conta e as suas compras estão protegidas pela Garantia Shopee e a equipe de suporte da Shopee poderá resolver essa questão diretamente para você.",
+        highlight: true,
       },
       {
         section: "Closing",
@@ -1310,6 +1389,14 @@ CX> Cancel order`,
             highlight: true,
           },
           {
+            section: "Assurance",
+            english:
+              "Rest assured your account and purchases are protected by Shopee Guarantee, and Shopee's support team can resolve platform matters directly for you.",
+            portuguese:
+              "Fique tranquilo, pois a sua conta e as suas compras estão protegidas pela Garantia Shopee e a equipe de suporte da Shopee poderá resolver essa questão diretamente para você.",
+            highlight: true,
+          },
+          {
             section: "Closing",
             english: "We apologize for not being able to assist with this specific matter, and we appreciate your understanding.",
             portuguese:
@@ -1331,9 +1418,11 @@ CX> Cancel order`,
             highlight: true,
           },
           {
-            section: "Closing",
-            english: "They have full access to your Shopee account and will be able to assist you right away!",
-            portuguese: "Eles têm acesso total à sua conta Shopee e poderão ajudar você imediatamente!",
+            section: "Assurance",
+            english:
+              "Rest assured they have full access to your Shopee account and your purchases remain protected by Shopee Guarantee!",
+            portuguese:
+              "Fique tranquilo, pois eles têm acesso total à sua conta Shopee e as suas compras continuam protegidas pela Garantia Shopee!",
           },
         ],
       },
@@ -1348,6 +1437,7 @@ CX> Cancel order`,
       "CX asks the store directly for a full refund or cancellation outside the in-app flow.",
     policyRule:
       "Core store rule: We don't offer full refunds directly because all transactions happen in Shopee. Instruct CX to tap Return/Refund to cancel and get their refund.",
+    guideIds: ["return-refund", "refund-sla"],
     sampleInput:
       "Order #261112BR19R2 (Ceramic Mug) > CX says: 'Can your store just send me a full refund via Pix and cancel my order?'",
     rows: [
@@ -1476,6 +1566,7 @@ CX> Cancel order`,
       "CX asks to cancel while the order is still in preparation (not yet picked up or shipped out).",
     policyRule:
       "Inform we cannot cancel orders directly. Tell CX to tap Cancel Order; if unavailable, explain payment was distributed to Taxes + Shipping costs and direct to Shopee webform.",
+    guideIds: ["cancel-order", "refund-sla"],
     sampleInput: `Order SN:
 26111288PRE4K1
 Ampola Grow Turn para Cuidados com o Couro Cabeludo 100ml
@@ -1637,7 +1728,8 @@ CX> Cancel order`,
     whenToUse:
       "CX asks to expedite, rush, or prioritize their order shipping/delivery (or asks the store to speed up delivery).",
     policyRule:
-      "Confirm we requested to expedite and follow up their order with the courier/team, share tracking & estimated date, and assure their order is safe and protected by Shopee Guarantee.",
+      "Clarify seller doesn't control courier speed/routing once shipped, confirm we follow up and expedite with courier, share status/tracking & 5–14d EDD estimate, plus Shopee Guarantee.",
+    guideIds: ["find-order"],
     sampleInput: `Order SN:
 26111044EXP8M1
 Shipping Tracking No
@@ -1656,9 +1748,16 @@ CX> Please expedite my order, I need it urgently!`,
       {
         section: "Greeting",
         english:
-          "Hello! Thank you for reaching out to us. We completely understand that you need your order as soon as possible.",
+          "Hello! Thank you very much for your message and for your patience. We completely understand that you need your order urgently.",
         portuguese:
-          "Olá! Obrigado por entrar em contato conosco. Entendemos perfeitamente que você precisa do seu pedido o mais rápido possível.",
+          "Olá! Muito obrigado pela sua mensagem e pela sua paciência. Entendemos perfeitamente que você precisa do seu pedido com urgência.",
+      },
+      {
+        section: "Courier speed clarification",
+        english:
+          "As the seller, we do not have direct control over the courier's delivery speed or routing once the package is shipped. However, we will do our best to help.",
+        portuguese:
+          "Como vendedor, não temos controle direto sobre a velocidade ou rota de entrega da transportadora assim que o pacote for enviado. No entanto, faremos o possível para ajudar.",
       },
       {
         section: "Expedite & Follow-up",
@@ -1671,9 +1770,9 @@ CX> Please expedite my order, I need it urgently!`,
       {
         section: "Tracking & Est. Delivery",
         english:
-          "Your order (tracking [TRACKING]) has an estimated delivery date of [DATE], and we will continue monitoring the progress closely.",
+          "Your order (tracking [TRACKING]) shows an estimated delivery date of [DATE], and no worries—this is only an estimate, as international orders usually arrive within 5–14 days.",
         portuguese:
-          "O seu pedido (rastreamento [RASTREAMENTO]) tem data estimada de entrega para [DATA], e continuaremos acompanhando o andamento de perto.",
+          "O seu pedido (rastreamento [RASTREAMENTO]) apresenta data estimada de entrega para [DATA], e fique tranquilo — isso é apenas uma estimativa, pois normalmente os pedidos internacionais chegam em apenas 5 a 14 dias.",
       },
       {
         section: "Assurance",
@@ -1694,15 +1793,22 @@ CX> Please expedite my order, I need it urgently!`,
     paths: [
       {
         id: "initial",
-        label: "1. Confirm Expedite & Follow-Up Request",
-        cxTrigger: "CX asks to expedite or prioritize their order",
+        label: "1. Shipped / In Transit Urgent Follow-Up",
+        cxTrigger: "CX asks to expedite an order already handed to courier",
         rows: [
           {
             section: "Greeting",
             english:
-              "Hello! Thank you for reaching out to us. We completely understand that you need your order as soon as possible.",
+              "Hello! Thank you very much for your message and for your patience. We completely understand that you need your order urgently.",
             portuguese:
-              "Olá! Obrigado por entrar em contato conosco. Entendemos perfeitamente que você precisa do seu pedido o mais rápido possível.",
+              "Olá! Muito obrigado pela sua mensagem e pela sua paciência. Entendemos perfeitamente que você precisa do seu pedido com urgência.",
+          },
+          {
+            section: "Courier speed clarification",
+            english:
+              "As the seller, we do not have direct control over the courier's delivery speed or routing once the package is shipped. However, we will do our best to help.",
+            portuguese:
+              "Como vendedor, não temos controle direto sobre a velocidade ou rota de entrega da transportadora assim que o pacote for enviado. No entanto, faremos o possível para ajudar.",
           },
           {
             section: "Expedite & Follow-up",
@@ -1715,9 +1821,9 @@ CX> Please expedite my order, I need it urgently!`,
           {
             section: "Tracking & Est. Delivery",
             english:
-              "Your order (tracking [TRACKING]) has an estimated delivery date of [DATE], and we will continue monitoring the progress closely.",
+              "Your order (tracking [TRACKING]) shows an estimated delivery date of [DATE], and no worries—this is only an estimate, as international orders usually arrive within 5–14 days.",
             portuguese:
-              "O seu pedido (rastreamento [RASTREAMENTO]) tem data estimada de entrega para [DATA], e continuaremos acompanhando o andamento de perto.",
+              "O seu pedido (rastreamento [RASTREAMENTO]) apresenta data estimada de entrega para [DATA], e fique tranquilo — isso é apenas uma estimativa, pois normalmente os pedidos internacionais chegam em apenas 5 a 14 dias.",
           },
           {
             section: "Assurance",
@@ -1767,6 +1873,43 @@ CX> Please expedite my order, I need it urgently!`,
           },
         ],
       },
+      {
+        id: "in-preparation-urgent",
+        label: "3. Just Placed / In Preparation Urgent",
+        cxTrigger: "Order was just placed or is still being prepared in the warehouse",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! Thank you very much for your message and patience. We completely understand that you need this product urgently.",
+            portuguese:
+              "Olá! Muito obrigado pela sua mensagem e paciência. Entendemos perfeitamente que você precisa deste produto com urgência.",
+          },
+          {
+            section: "Current status",
+            english:
+              "Your order was recently placed and is currently being prepared in our warehouse, with an estimated ship-out date of [DATE].",
+            portuguese:
+              "O seu pedido foi feito recentemente e está atualmente sendo preparado no nosso armazém, com data estimada de envio em [DATA].",
+          },
+          {
+            section: "Clarification & Follow-up",
+            english:
+              "As the seller, we do not control courier speed once shipped, but rest assured that we follow up this to courier and we expedite follow your order to courier for priority handling.",
+            portuguese:
+              "Como vendedor, não controlamos a velocidade da transportadora após o envio, mas fique tranquilo pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para tratamento prioritário.",
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "No worries—estimated dates are only an estimate (international orders usually arrive within 5–14 days), and your purchase remains protected by Shopee Guarantee.",
+            portuguese:
+              "Fique tranquilo, pois as datas estimadas são apenas uma estimativa (pedidos internacionais costumam chegar em 5 a 14 dias), e a sua compra continua protegida pela Garantia Shopee.",
+            highlight: true,
+          },
+        ],
+      },
     ],
   },
   {
@@ -1778,6 +1921,7 @@ CX> Please expedite my order, I need it urgently!`,
       "CX reports poor quality, missing accessory/part, or damage. Stage 1: empathize, ask for video proof, and assure they won't be at a loss. Stage 2 (after proof): if <= R$25 offer 2 options (Keep + Store Voucher >= amount OR Return & Refund); if > R$25 escalate (24–48h chat update).",
     policyRule:
       "Ask proof first + assure no loss. After proof: if <= R$25 (don't mention limit), offer Option 1 (Keep item + R$5/10/15/20/25 Store Voucher >= item amount) or Option 2 (Return & Refund). If > R$25, escalate to higher team (24–48h).",
+    guideIds: ["voucher-wallet", "voucher-steps", "return-refund", "counter-offer", "refund-sla"],
     sampleInput: `Order SN:
 2611039SP7DNMP
 Brincos de Luxo com Correntes Longas e Anéis Texturizados Dourados, brincos para mulheres com design Boho Chic
@@ -2041,6 +2185,7 @@ CX> Very poor quality, not even clutch came. It is beautiful, but they have not 
       "CX says they already paid for their order, but Shopee Seller Center / app still shows status as Unpaid.",
     policyRule:
       "Inform we do not have access to payments; reassure it usually reflects in less than 24 hours; if >24 hours, instruct CX to contact Shopee platform support to follow up, plus Shopee Guarantee assurance.",
+    guideIds: ["contact-shopee-cs", "find-order"],
     sampleInput: `Unpaid
 2026-11-13 06:55 +0800
 Order SN:
@@ -2196,6 +2341,795 @@ CX: I paid for my order but it shows as if I had not paid`,
               "We appreciate your understanding and remain here if you need any further assistance.",
             portuguese:
               "Agradecemos a sua compreensão e permanecemos à disposição se precisar de mais alguma ajuda.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s17",
+    number: 17,
+    title: "Arrived in Brazil — No Updates Since",
+    category: ScenarioCategory.DELAYED,
+    whenToUse:
+      'Tracking shows "Pedido chegou no Brasil" and then goes silent for many days.',
+    policyRule:
+      "Explain that domestic sorting/inspection can have a silent gap, include both follow-up phrases, share 5–14d EDD estimate, and reassure under Shopee Guarantee.",
+    guideIds: ["find-order"],
+    sampleInput:
+      "Order #261102BR88N2 (Tracking BR2688123400Q, Expresso padrão) > Tracking says 'Pedido chegou no Brasil' 8 days ago with no updates since.",
+    rows: [
+      {
+        section: "Greeting & Empathy",
+        english:
+          "Hello! Thank you for contacting us. We understand your concern about the lack of tracking updates and apologize for the wait.",
+        portuguese:
+          "Olá! Obrigado por entrar em contato conosco. Entendemos a sua preocupação sobre a falta de atualizações de rastreamento e pedimos desculpas pela espera.",
+      },
+      {
+        section: "Current status",
+        english:
+          "We checked your tracking and can confirm that your order arrived in Brazil on [DATE]. It is currently being processed through the local logistics network before moving to the next stage.",
+        portuguese:
+          "Verificamos o rastreamento e podemos confirmar que o seu pedido chegou ao Brasil em [DATA]. Ele está atualmente sendo processado pela rede de logística local antes de seguir para a próxima etapa.",
+      },
+      {
+        section: "Domestic sorting explanation",
+        english:
+          "It is completely normal for shipments to have a gap in updates after arriving in the destination country while the package is sorted, inspected, or transferred between local distribution centers.",
+        portuguese:
+          "É completamente normal que envios tenham uma lacuna de atualizações após chegar ao país de destino enquanto o pacote é triado, inspecionado ou transferido entre centros de distribuição locais.",
+      },
+      {
+        section: "Follow-up action",
+        english:
+          "Please rest assured that we follow up this to courier and we expedite follow your order to courier to ensure it continues moving smoothly toward delivery.",
+        portuguese:
+          "Fique tranquilo, pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para garantir que ele continue seguindo normalmente em direção à entrega.",
+        highlight: true,
+      },
+      {
+        section: "Assurance & Est. Delivery",
+        english:
+          "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and protected by Shopee Guarantee.",
+        portuguese:
+          "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e protegido pela Garantia Shopee.",
+        highlight: true,
+      },
+      {
+        section: "Closing",
+        english:
+          "If tracking does not update within the next few days, please feel free to contact us again.",
+        portuguese:
+          "Se o rastreamento não atualizar nos próximos dias, sinta-se à vontade para entrar em contato conosco novamente.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Domestic Sorting Gap & Courier Follow-Up",
+        cxTrigger: "Tracking arrived in Brazil and went silent",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! Thank you for contacting us. We understand your concern about the lack of tracking updates and apologize for the wait.",
+            portuguese:
+              "Olá! Obrigado por entrar em contato conosco. Entendemos a sua preocupação sobre a falta de atualizações de rastreamento e pedimos desculpas pela espera.",
+          },
+          {
+            section: "Current status",
+            english:
+              "We checked your tracking and can confirm that your order arrived in Brazil on [DATE]. It is currently being processed through the local logistics network before moving to the next stage.",
+            portuguese:
+              "Verificamos o rastreamento e podemos confirmar que o seu pedido chegou ao Brasil em [DATA]. Ele está atualmente sendo processado pela rede de logística local antes de seguir para a próxima etapa.",
+          },
+          {
+            section: "Domestic sorting explanation",
+            english:
+              "It is completely normal for shipments to have a gap in updates after arriving in the destination country while the package is sorted, inspected, or transferred between local distribution centers.",
+            portuguese:
+              "É completamente normal que envios tenham uma lacuna de atualizações após chegar ao país de destino enquanto o pacote é triado, inspecionado ou transferido entre centros de distribuição locais.",
+          },
+          {
+            section: "Follow-up action",
+            english:
+              "Please rest assured that we follow up this to courier and we expedite follow your order to courier to ensure it continues moving smoothly toward delivery.",
+            portuguese:
+              "Fique tranquilo, pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para garantir que ele continue seguindo normalmente em direção à entrega.",
+            highlight: true,
+          },
+          {
+            section: "Assurance & Est. Delivery",
+            english:
+              "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and protected by Shopee Guarantee.",
+            portuguese:
+              "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e protegido pela Garantia Shopee.",
+            highlight: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s18",
+    number: 18,
+    title: "Canceled Discrepancy (Shows Paid & Shipped)",
+    category: ScenarioCategory.PLATFORM,
+    whenToUse:
+      "Customer claims the order was canceled without a refund, but the system still shows the order as paid and shipped.",
+    policyRule:
+      "State clearly what the system actually shows (paid, shipped, latest scan, EDD). Clarify cancellation/refund status is platform scope and redirect to Shopee Help Center.",
+    guideIds: ["contact-shopee-cs", "find-order", "refund-sla"],
+    sampleInput:
+      "Order #261104BR31P9 (Shipped Nov 5, Latest update Nov 10, Est Delivery Nov 24) > CX says: 'My order was canceled and I still got no refund!'",
+    rows: [
+      {
+        section: "Greeting & Empathy",
+        english:
+          "Hello! Thank you for reaching out to us, and we understand your concern regarding your order status and refund.",
+        portuguese:
+          "Olá! Obrigado por entrar em contato conosco e entendemos a sua preocupação em relação ao status do pedido e ao reembolso.",
+      },
+      {
+        section: "Order status",
+        english:
+          "We checked your order and our records show it was paid and already shipped on [DATE], currently in transit (latest update [DATE], estimated delivery [DATE]).",
+        portuguese:
+          "Verificamos o seu pedido e os nossos registros mostram que ele foi pago e já enviado em [DATA], estando em trânsito (última atualização em [DATA], entrega estimada em [DATA]).",
+        highlight: true,
+      },
+      {
+        section: "Discrepancy & Platform scope",
+        english:
+          "Since our system does not show this order as canceled, matters related to cancellation records, refund status, and payments are handled directly by Shopee and are outside our store's scope.",
+        portuguese:
+          "Como o nosso sistema não mostra este pedido como cancelado, assuntos relacionados a registros de cancelamento, status de reembolso e pagamentos são tratados diretamente pela Shopee e estão fora do alcance da loja.",
+        highlight: true,
+      },
+      {
+        section: "Redirect to Shopee",
+        english:
+          'Please contact Shopee\'s official support directly via "Me" -> "Help Center" / "Customer Service" in the app so they can verify your account\'s cancellation/refund records.',
+        portuguese:
+          'Por favor, entre em contato diretamente com o atendimento oficial da Shopee acessando "Eu" -> "Central de Ajuda" / "Atendimento" no aplicativo para que verifiquem os registros na sua conta.',
+        highlight: true,
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your payment remains fully protected by Shopee Guarantee while Shopee verifies your order status.",
+        portuguese:
+          "Fique tranquilo, pois o seu pagamento continua totalmente protegido pela Garantia Shopee enquanto a Shopee verifica o status do pedido.",
+      },
+      {
+        section: "Closing",
+        english: "We appreciate your understanding and remain available if you need anything else.",
+        portuguese: "Agradecemos a sua compreensão e permanecemos à disposição se precisar de mais alguma coisa.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Clarify System Status & Redirect to Shopee",
+        cxTrigger: "CX claims canceled without refund, yet system shows paid & shipped",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! Thank you for reaching out to us, and we understand your concern regarding your order status and refund.",
+            portuguese:
+              "Olá! Obrigado por entrar em contato conosco e entendemos a sua preocupação em relação ao status do pedido e ao reembolso.",
+          },
+          {
+            section: "Order status",
+            english:
+              "We checked your order and our records show it was paid and already shipped on [DATE], currently in transit (latest update [DATE], estimated delivery [DATE]).",
+            portuguese:
+              "Verificamos o seu pedido e os nossos registros mostram que ele foi pago e já enviado em [DATA], estando em trânsito (última atualização em [DATA], entrega estimada em [DATA]).",
+            highlight: true,
+          },
+          {
+            section: "Redirect to Shopee",
+            english:
+              'Because our system does not show it as canceled and refund/payment records belong to Shopee, please contact Shopee Support ("Me" -> "Help Center" / "Customer Service") so they can check directly.',
+            portuguese:
+              'Como o nosso sistema não mostra o pedido como cancelado e os registros financeiros pertencem à Shopee, entre em contato com o suporte da Shopee ("Eu" -> "Central de Ajuda" / "Atendimento").',
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your payment remains fully protected by Shopee Guarantee while Shopee verifies your order status.",
+            portuguese:
+              "Fique tranquilo, pois o seu pagamento continua totalmente protegido pela Garantia Shopee enquanto a Shopee verifica o status do pedido.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s19",
+    number: 19,
+    title: "Invalid / Unpaid Order — Refund Question",
+    category: ScenarioCategory.PLATFORM,
+    whenToUse:
+      'Order status shows "INVALID" with no payment date, and the customer asks how to get a refund.',
+    policyRule:
+      "Explain that no payment was captured/received by the store for an Invalid order, and redirect to Shopee Help Center for any payment/refund check.",
+    guideIds: ["contact-shopee-cs", "find-order"],
+    sampleInput:
+      "Order #261108BR22V1 | Status: INVALID (No Payment Date) > CX asks how to receive their refund.",
+    rows: [
+      {
+        section: "Greeting & Empathy",
+        english:
+          "Hello! Thank you for reaching out to us, and we understand your concern regarding your refund.",
+        portuguese:
+          "Olá! Obrigado por entrar em contato conosco e entendemos a sua preocupação em relação ao seu reembolso.",
+      },
+      {
+        section: "Order status",
+        english:
+          'We checked your order and can see that it is showing as "Invalid" with no payment date recorded, meaning payment was not completed or processed for this order.',
+        portuguese:
+          'Verificamos o seu pedido e podemos ver que ele aparece como "Inválido", sem data de pagamento registrada, indicando que o pagamento não foi concluído ou processado.',
+        highlight: true,
+      },
+      {
+        section: "Refund explanation",
+        english:
+          "Since the order was not successfully paid, our store did not receive any payment for it and cannot process a refund from our side.",
+        portuguese:
+          "Como o pedido não foi pago com sucesso, a nossa loja não recebeu nenhum valor por ele e não consegue processar um reembolso do nosso lado.",
+        highlight: true,
+      },
+      {
+        section: "Redirect to Shopee",
+        english:
+          'Because payment processing is handled by Shopee, please contact Shopee Support directly via "Me" -> "Help Center" / "Customer Service" in the app to check any charge.',
+        portuguese:
+          'Como o processamento de pagamentos é tratado pela Shopee, entre em contato diretamente com o atendimento da Shopee em "Eu" -> "Central de Ajuda" / "Atendimento" para verificar qualquer cobrança.',
+        highlight: true,
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your account and any completed charges remain protected by Shopee Guarantee, and Shopee's team can verify the payment details safely.",
+        portuguese:
+          "Fique tranquilo, pois a sua conta e qualquer cobrança concluída continuam protegidas pela Garantia Shopee, e a equipe da Shopee poderá verificar os detalhes com segurança.",
+      },
+      {
+        section: "Closing",
+        english: "We apologize for any inconvenience and appreciate your understanding.",
+        portuguese: "Pedimos desculpas por qualquer inconveniente e agradecemos a sua compreensão.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Explain Invalid Status & Redirect to Shopee",
+        cxTrigger: "Order is INVALID with no payment date and CX asks for a refund",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! Thank you for reaching out to us, and we understand your concern regarding your refund.",
+            portuguese:
+              "Olá! Obrigado por entrar em contato conosco e entendemos a sua preocupação em relação ao seu reembolso.",
+          },
+          {
+            section: "Order status & Explanation",
+            english:
+              'Your order shows as "Invalid" with no payment date recorded, so our store did not receive any payment and cannot issue a refund from our side.',
+            portuguese:
+              'O seu pedido consta como "Inválido" sem data de pagamento registrada, portanto a nossa loja não recebeu nenhum valor e não consegue emitir reembolso.',
+            highlight: true,
+          },
+          {
+            section: "Redirect to Shopee",
+            english:
+              'Please contact Shopee Support via "Me" -> "Help Center" / "Customer Service" with your receipt so they can verify any transaction safely.',
+            portuguese:
+              'Por favor, entre em contato com o suporte da Shopee em "Eu" -> "Central de Ajuda" / "Atendimento" com o seu comprovante para que verifiquem a transação com segurança.',
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your account and any completed charges remain protected by Shopee Guarantee.",
+            portuguese:
+              "Fique tranquilo, pois a sua conta e qualquer cobrança concluída continuam protegidas pela Garantia Shopee.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s20",
+    number: 20,
+    title: '"Will It Be Delivered?" — Delivery Confirmation',
+    category: ScenarioCategory.GENERAL,
+    whenToUse:
+      "Customer simply asks for confirmation that their order is on the way and will be delivered.",
+    policyRule:
+      "Confirm clearly with ship-out date, latest update, tracking number, 5–14d EDD estimate, and Shopee Guarantee reassurance.",
+    guideIds: ["find-order"],
+    sampleInput:
+      "Order #261111BR45D2 (Tracking AJ26111145001, Estimated Delivery 24/11/2026) > CX asks: 'Will my order still be delivered?'",
+    rows: [
+      {
+        section: "Greeting & Confirmation",
+        english:
+          "Hello! Thank you for reaching out regarding your order. We can confirm that your order is on its way and will be delivered.",
+        portuguese:
+          "Olá! Obrigado por entrar em contato sobre o seu pedido. Podemos confirmar que o seu pedido está a caminho e será entregue.",
+        highlight: true,
+      },
+      {
+        section: "Current status",
+        english:
+          "Your order was shipped on [DATE] and is currently in transit, with the latest tracking update on [DATE].",
+        portuguese:
+          "O seu pedido foi enviado em [DATA] e está atualmente em trânsito, com a última atualização de rastreamento em [DATA].",
+      },
+      {
+        section: "Assurance & Est. Delivery",
+        english:
+          "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and protected by Shopee Guarantee.",
+        portuguese:
+          "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e protegido pela Garantia Shopee.",
+        highlight: true,
+      },
+      {
+        section: "Tracking",
+        english:
+          "You can continue tracking your order using tracking number [TRACKING] to stay updated on its progress.",
+        portuguese:
+          "Você pode continuar acompanhando o seu pedido usando o número de rastreamento [RASTREAMENTO] para acompanhar o progresso.",
+      },
+      {
+        section: "Closing",
+        english: "We appreciate your patience and hope you receive your order very soon.",
+        portuguese: "Agradecemos a sua paciência e esperamos que receba o seu pedido muito em breve.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Confirm Delivery Status & EDD",
+        cxTrigger: "CX simply wants confirmation the parcel is coming",
+        rows: [
+          {
+            section: "Greeting & Confirmation",
+            english:
+              "Hello! Thank you for reaching out regarding your order. We can confirm that your order is on its way and will be delivered.",
+            portuguese:
+              "Olá! Obrigado por entrar em contato sobre o seu pedido. Podemos confirmar que o seu pedido está a caminho e será entregue.",
+            highlight: true,
+          },
+          {
+            section: "Current status",
+            english:
+              "Your order was shipped on [DATE] and is currently in transit, with the latest tracking update on [DATE].",
+            portuguese:
+              "O seu pedido foi enviado em [DATA] e está atualmente em trânsito, com a última atualização de rastreamento em [DATA].",
+          },
+          {
+            section: "Assurance & Est. Delivery",
+            english:
+              "No worries—the estimated delivery date ([DATE]) is only an estimate, as international orders usually arrive within 5–14 days. Rest assured your package is safe and protected by Shopee Guarantee.",
+            portuguese:
+              "Fique tranquilo, pois a data estimada de entrega ([DATA]) é apenas uma estimativa — normalmente os pedidos internacionais chegam em apenas 5 a 14 dias. O seu pacote está seguro e protegido pela Garantia Shopee.",
+            highlight: true,
+          },
+          {
+            section: "Tracking",
+            english:
+              "You can continue tracking your order using tracking number [TRACKING] to stay updated on its progress.",
+            portuguese:
+              "Você pode continuar acompanhando o seu pedido usando o número de rastreamento [RASTREAMENTO] para acompanhar o progresso.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s21",
+    number: 21,
+    title: "Order Just Paid — Early Stage Reassurance",
+    category: ScenarioCategory.GENERAL,
+    whenToUse:
+      'Customer sends a short positive or eager message like "I hope it arrives soon" right after paying.',
+    policyRule:
+      "Match the warm positive tone! Quote current status, tracking, and 5–14d EDD estimate with Shopee Guarantee reassurance—no delay or escalation boilerplate.",
+    guideIds: ["find-order"],
+    sampleInput:
+      "Order #261113BR50E1 (Tracking BR2699100022Q, Estimated Delivery 25/11/2026) > CX says: 'I just paid! Hope it arrives soon 😊'",
+    rows: [
+      {
+        section: "Greeting",
+        english: "Hello! Thank you so much for your message and for shopping with us.",
+        portuguese: "Olá! Muito obrigado pela sua mensagem e por comprar conosco.",
+      },
+      {
+        section: "Warm reassurance",
+        english:
+          "We hope so too! Your order is moving smoothly through our logistics network.",
+        portuguese:
+          "Nós também esperamos! O seu pedido está seguindo normalmente pela nossa rede de logística.",
+        highlight: true,
+      },
+      {
+        section: "Status & Est. Delivery",
+        english:
+          "According to our system, the latest update was on [DATE] and the estimated delivery date is [DATE]—no worries, this is only an estimate since international orders usually arrive within 5–14 days.",
+        portuguese:
+          "De acordo com o nosso sistema, a última atualização foi em [DATA] e a data estimada de entrega é [DATA] — fique tranquilo, essa é apenas uma estimativa, pois pedidos internacionais costumam chegar em apenas 5 a 14 dias.",
+      },
+      {
+        section: "Tracking",
+        english: "You can follow every step using tracking number [TRACKING].",
+        portuguese: "Você pode acompanhar cada etapa usando o número de rastreamento [RASTREAMENTO].",
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your purchase is completely protected by Shopee Guarantee, and we hope your order arrives safely and very soon!",
+        portuguese:
+          "Fique tranquilo, pois a sua compra está totalmente protegida pela Garantia Shopee, e esperamos que o seu pedido chegue com segurança e bem rápido!",
+        highlight: true,
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Warm Early Reassurance",
+        cxTrigger: "CX sends an eager or positive message after payment",
+        rows: [
+          {
+            section: "Greeting",
+            english: "Hello! Thank you so much for your message and for shopping with us.",
+            portuguese: "Olá! Muito obrigado pela sua mensagem e por comprar conosco.",
+          },
+          {
+            section: "Warm reassurance",
+            english:
+              "We hope so too! Your order is moving smoothly through our logistics network.",
+            portuguese:
+              "Nós também esperamos! O seu pedido está seguindo normalmente pela nossa rede de logística.",
+            highlight: true,
+          },
+          {
+            section: "Status & Est. Delivery",
+            english:
+              "According to our system, the latest update was on [DATE] and the estimated delivery date is [DATE]—no worries, this is only an estimate since international orders usually arrive within 5–14 days.",
+            portuguese:
+              "De acordo com o nosso sistema, a última atualização foi em [DATA] e a data estimada de entrega é [DATA] — fique tranquilo, essa é apenas uma estimativa, pois pedidos internacionais costumam chegar em apenas 5 a 14 dias.",
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your purchase is completely protected by Shopee Guarantee, and we hope your order arrives safely and very soon!",
+            portuguese:
+              "Fique tranquilo, pois a sua compra está totalmente protegida pela Garantia Shopee, e esperamos que o seu pedido chegue com segurança e bem rápido!",
+            highlight: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s22",
+    number: 22,
+    title: "Past EDD, but Tracking Updated Today",
+    category: ScenarioCategory.DELAYED,
+    whenToUse:
+      "The estimated delivery date has already passed, yet tracking shows a fresh scan today proving the parcel is still moving.",
+    policyRule:
+      "Acknowledge the missed EDD honestly instead of quoting it as valid, highlight today's newest scan, include both courier follow-up phrases, and reassure under Shopee Guarantee.",
+    guideIds: ["find-order", "return-refund"],
+    sampleInput:
+      "Order #261020BR19K4 (Tracking BR2655432100Q, Estimated Delivery 08/11/2026, Latest Logistic Update: Today - In transit to local hub) > CX asks why it is past the date.",
+    rows: [
+      {
+        section: "Greeting & Empathy",
+        english:
+          "Hello! We sincerely apologize that your order has not arrived yet. We completely understand your concern and frustration.",
+        portuguese:
+          "Olá! Pedimos sinceras desculpas por seu pedido ainda não ter chegado. Entendemos completamente a sua preocupação e frustração.",
+      },
+      {
+        section: "Fresh scan today",
+        english:
+          "We checked your tracking information and can see that there was actually a new update today, [DATE]. Your order is still in transit and actively moving through the logistics network.",
+        portuguese:
+          "Verificamos o rastreamento e podemos ver que houve uma nova atualização hoje, [DATA]. O seu pedido ainda está em trânsito e seguindo ativamente pela rede de logística.",
+        highlight: true,
+      },
+      {
+        section: "Missed EDD honesty",
+        english:
+          "The original estimated delivery date was [DATE], and we apologize for this delay—international shipments can sometimes take longer due to customs processing and local distribution.",
+        portuguese:
+          "A data estimada de entrega original era [DATA], e pedimos desculpas por esse atraso — envios internacionais às vezes levam mais tempo devido à alfândega e à distribuição local.",
+      },
+      {
+        section: "Follow-up action",
+        english:
+          "Please rest assured that we follow up this to courier and we expedite follow your order to courier to check the current status and request the fastest possible delivery.",
+        portuguese:
+          "Fique tranquilo, pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para verificar a situação atual e solicitar a entrega mais rápida possível.",
+        highlight: true,
+      },
+      {
+        section: "Assurance",
+        english:
+          "Your order has not been lost—today's update confirms it is still moving toward delivery, and your payment remains fully protected by Shopee Guarantee.",
+        portuguese:
+          "O seu pedido não foi perdido — a atualização de hoje confirma que ele continua em movimento para entrega, e o seu pagamento continua totalmente protegido pela Garantia Shopee.",
+        highlight: true,
+      },
+      {
+        section: "Closing",
+        english:
+          "If you do not receive your order within the next few days, please feel free to contact us again.",
+        portuguese:
+          "Se você não receber o seu pedido nos próximos dias, sinta-se à vontade para entrar em contato conosco novamente.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Highlight Today's Scan + Courier Follow-Up",
+        cxTrigger: "Past estimated delivery date, but tracking has a new scan today",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! We sincerely apologize that your order has not arrived yet. We completely understand your concern and frustration.",
+            portuguese:
+              "Olá! Pedimos sinceras desculpas por seu pedido ainda não ter chegado. Entendemos completamente a sua preocupação e frustração.",
+          },
+          {
+            section: "Fresh scan today",
+            english:
+              "We checked your tracking information and can see that there was actually a new update today, [DATE]. Your order is still in transit and actively moving through the logistics network.",
+            portuguese:
+              "Verificamos o rastreamento e podemos ver que houve uma nova atualização hoje, [DATA]. O seu pedido ainda está em trânsito e seguindo ativamente pela rede de logística.",
+            highlight: true,
+          },
+          {
+            section: "Missed EDD & Follow-up",
+            english:
+              "We apologize that the original estimated date ([DATE]) has passed; please rest assured that we follow up this to courier and we expedite follow your order to courier for the fastest delivery.",
+            portuguese:
+              "Pedimos desculpas pois o prazo estimado original ([DATA]) já passou; fique tranquilo, pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora.",
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Your order has not been lost and your payment remains fully protected by Shopee Guarantee.",
+            portuguese:
+              "O seu pedido não foi perdido e o seu pagamento continua totalmente protegido pela Garantia Shopee.",
+            highlight: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s23",
+    number: 23,
+    title: "Escalation — Threats, Complaints, Lawyer",
+    category: ScenarioCategory.DELAYED,
+    whenToUse:
+      "Customer is angry and threatens to report the store, go to Procon/Reclame Aqui, sue, or hire a lawyer over a delay.",
+    policyRule:
+      "Stay calm and never argue. Never promise a fixed delivery day. Explain status, include both courier follow-up phrases + Shopee Guarantee, and only mention Return/Refund if CX demands money back.",
+    guideIds: ["return-refund", "contact-shopee-cs", "refund-sla"],
+    sampleInput:
+      "Order #261019BR77X2 (Stuck in Brazil customs inspection) > CX says: 'This is a scam! If you don't deliver tomorrow I will report you to Procon and call my lawyer!'",
+    rows: [
+      {
+        section: "Calm Empathy",
+        english:
+          "Hello! We sincerely apologize for the delay and for the frustration this has caused. We completely understand your concern regarding your order.",
+        portuguese:
+          "Olá! Pedimos sinceras desculpas pela demora e pela frustração que isso causou. Entendemos completamente a sua preocupação em relação ao seu pedido.",
+        highlight: true,
+      },
+      {
+        section: "Status & Context",
+        english:
+          "We checked your tracking and can confirm your order is currently [STATUS] in Brazil, which is processed by local authorities/carriers and outside our shop's direct control.",
+        portuguese:
+          "Verificamos o rastreamento e confirmamos que o seu pedido está atualmente [STATUS] no Brasil, um processo conduzido pelas autoridades/transportadoras locais e fora do controle direto da loja.",
+      },
+      {
+        section: "Follow-up action",
+        english:
+          "Please rest assured that we follow up this to courier and we expedite follow your order to courier to check the status and request the fastest possible release and delivery.",
+        portuguese:
+          "Fique tranquilo, pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para verificar a situação e solicitar a liberação e entrega mais rápidas possíveis.",
+        highlight: true,
+      },
+      {
+        section: "If refund is demanded",
+        english:
+          'Your order has not been lost; however, if you prefer to proceed with a refund (once eligible in your order status), please tap the "Return/Refund" button in your Shopee app so Shopee can review your case.',
+        portuguese:
+          'O seu pedido não foi perdido; porém, caso prefira prosseguir com um reembolso (quando disponível no pedido), toque no botão "Devolução/Reembolso" no aplicativo da Shopee para análise.',
+        highlight: true,
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your payment is 100% protected by Shopee Guarantee, and we are doing everything within our reach on our side to help.",
+        portuguese:
+          "Fique tranquilo, pois o seu pagamento está 100% protegido pela Garantia Shopee e estamos fazendo tudo ao nosso alcance do nosso lado para ajudar.",
+        highlight: true,
+      },
+      {
+        section: "Closing",
+        english: "We truly appreciate your patience and understanding.",
+        portuguese: "Agradecemos sinceramente a sua paciência e compreensão.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Calm De-Escalation (No Refund Demanded Yet)",
+        cxTrigger: "CX threatens Procon, lawyer, or reporting due to delay",
+        rows: [
+          {
+            section: "Calm Empathy",
+            english:
+              "Hello! We sincerely apologize for the delay and for the frustration this has caused. We completely understand your concern regarding your order.",
+            portuguese:
+              "Olá! Pedimos sinceras desculpas pela demora e pela frustração que isso causou. Entendemos completamente a sua preocupação em relação ao seu pedido.",
+            highlight: true,
+          },
+          {
+            section: "Status & Follow-up",
+            english:
+              "We checked your tracking ([STATUS]); please rest assured that we follow up this to courier and we expedite follow your order to courier to request the fastest possible release and delivery.",
+            portuguese:
+              "Verificamos o rastreamento ([STATUS]); fique tranquilo pois nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora para solicitar a entrega mais rápida possível.",
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your order has not been lost and your payment is 100% protected by Shopee Guarantee while the courier completes delivery.",
+            portuguese:
+              "Fique tranquilo, pois o seu pedido não foi perdido e o seu pagamento está 100% protegido pela Garantia Shopee enquanto a transportadora conclui a entrega.",
+            highlight: true,
+          },
+        ],
+      },
+      {
+        id: "demands-refund",
+        label: "2. Escalation + CX Demands Money Back",
+        cxTrigger: "Angry CX threatens legal action and demands their money back",
+        rows: [
+          {
+            section: "Calm Empathy",
+            english:
+              "We completely understand your frustration and sincerely apologize for this experience.",
+            portuguese:
+              "Entendemos perfeitamente a sua frustração e pedimos sinceras desculpas por essa experiência.",
+            highlight: true,
+          },
+          {
+            section: "Follow-up & Return/Refund",
+            english:
+              'While we follow up this to courier and we expedite follow your order to courier, if you wish to proceed with a refund, please tap "Return/Refund" in your Shopee app (or use Shopee\'s webform while within the estimated window) so Shopee\'s protection team can assist directly.',
+            portuguese:
+              'Enquanto nós acompanhamos isso junto à transportadora e aceleramos o acompanhamento do seu pedido junto à transportadora, caso deseje prosseguir com o reembolso, toque em "Devolução/Reembolso" no aplicativo da Shopee (ou pelo formulário oficial se ainda no prazo).',
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your money is 100% protected by Shopee Guarantee and will be refunded immediately once approved.",
+            portuguese:
+              "Fique tranquilo, pois o seu dinheiro está 100% protegido pela Garantia Shopee e será reembolsado imediatamente assim que aprovado.",
+            highlight: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "s24",
+    number: 24,
+    title: "Payment / Installment Inquiry (Airpay, Credit Card)",
+    category: ScenarioCategory.PLATFORM,
+    whenToUse:
+      "Customer asks about Airpay, credit card installments, charged amounts, duplicate charges, or payment method details.",
+    policyRule:
+      "Never confirm a charged amount as the seller. Clarify billing/installments are handled solely by Shopee and redirect to Shopee Help Center, with Shopee Guarantee assurance.",
+    guideIds: ["contact-shopee-cs", "refund-sla"],
+    sampleInput:
+      "Order #261112BR61H8 > CX asks: 'Why did my credit card show 3 installments via Airpay with a different amount?'",
+    rows: [
+      {
+        section: "Greeting & Empathy",
+        english:
+          "Hello! Thank you for contacting us about your payment, and we understand your concern regarding the charges or installments.",
+        portuguese:
+          "Olá! Obrigado por entrar em contato conosco sobre o seu pagamento e entendemos a sua preocupação com os valores ou parcelamento.",
+      },
+      {
+        section: "Out of scope",
+        english:
+          "Please kindly note that payment processing, installments, Airpay transactions, and billing are handled entirely by the Shopee platform and are outside our store's scope of support.",
+        portuguese:
+          "Por favor, observe que o processamento de pagamentos, parcelamentos, transações Airpay e cobranças são tratados inteiramente pela plataforma Shopee e estão fora do alcance do suporte da nossa loja.",
+        highlight: true,
+      },
+      {
+        section: "Redirect to Shopee",
+        english:
+          'For questions about installments or charged amounts, please contact Shopee\'s official customer service directly via "Me" -> "Help Center" / "Customer Service" in the app so they can check your payment details securely.',
+        portuguese:
+          'Para dúvidas sobre parcelamentos ou valores cobrados, entre em contato diretamente com o atendimento oficial da Shopee em "Eu" -> "Central de Ajuda" / "Atendimento" para que verifiquem os detalhes do pagamento com segurança.',
+        highlight: true,
+      },
+      {
+        section: "Assurance",
+        english:
+          "Rest assured your payment and account are protected by Shopee Guarantee, and Shopee's support team can resolve any billing question directly.",
+        portuguese:
+          "Fique tranquilo, pois o seu pagamento e a sua conta estão protegidos pela Garantia Shopee, e o suporte da Shopee poderá resolver qualquer dúvida de cobrança diretamente.",
+        highlight: true,
+      },
+      {
+        section: "Closing",
+        english:
+          "We apologize for not being able to check payment details directly, and we appreciate your understanding.",
+        portuguese:
+          "Pedimos desculpas por não podermos consultar os detalhes financeiros diretamente e agradecemos a sua compreensão.",
+      },
+    ],
+    paths: [
+      {
+        id: "initial",
+        label: "1. Redirect Installments / Billing to Shopee",
+        cxTrigger: "CX asks about credit card installments, Airpay, or duplicate charges",
+        rows: [
+          {
+            section: "Greeting & Empathy",
+            english:
+              "Hello! Thank you for contacting us about your payment, and we understand your concern regarding the charges or installments.",
+            portuguese:
+              "Olá! Obrigado por entrar em contato conosco sobre o seu pagamento e entendemos a sua preocupação com os valores ou parcelamento.",
+          },
+          {
+            section: "Out of scope",
+            english:
+              "Please kindly note that payment processing, installments, Airpay transactions, and billing are handled entirely by the Shopee platform and are outside our store's scope of support.",
+            portuguese:
+              "Por favor, observe que o processamento de pagamentos, parcelamentos, transações Airpay e cobranças são tratados inteiramente pela plataforma Shopee e estão fora do alcance do suporte da nossa loja.",
+            highlight: true,
+          },
+          {
+            section: "Redirect to Shopee",
+            english:
+              'Please contact Shopee Support directly via "Me" -> "Help Center" / "Customer Service" in the app so they can securely verify your billing and installments.',
+            portuguese:
+              'Por favor, entre em contato diretamente com o atendimento da Shopee em "Eu" -> "Central de Ajuda" / "Atendimento" no app para verificarem suas cobranças e parcelas com segurança.',
+            highlight: true,
+          },
+          {
+            section: "Assurance",
+            english:
+              "Rest assured your payment and account are protected by Shopee Guarantee.",
+            portuguese:
+              "Fique tranquilo, pois o seu pagamento e a sua conta estão protegidos pela Garantia Shopee.",
+            highlight: true,
           },
         ],
       },

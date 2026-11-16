@@ -25,7 +25,12 @@ import {
   ToneOption,
 } from "../types/cs";
 import { copyToClipboard, formatRowsAsMarkdownTable } from "../utils/clipboard";
-import { parseShopeeOrderPaste } from "../utils/shopeeParser";
+import {
+  isGenericExpressCarrier,
+  parseShopeeOrderPaste,
+  resolveCourierFromTracking,
+} from "../utils/shopeeParser";
+import { VisualGuideStrip } from "./VisualGuideStrip";
 
 interface ChatFlowProps {
   scenarios: ScriptScenario[];
@@ -53,6 +58,7 @@ interface ChatFlowProps {
     }
   ) => Promise<string | null>;
   onDeleteChatFlowSession: (flowId: string) => Promise<void>;
+  onOpenVisualGuides?: () => void;
 }
 
 const PROBING_FOCUS_PRESETS = [
@@ -73,6 +79,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   savedSessions,
   onSaveChatFlowSession,
   onDeleteChatFlowSession,
+  onOpenVisualGuides,
 }) => {
   const [orderInput, setOrderInput] = useState("");
   const [carrierName, setCarrierName] = useState("");
@@ -126,7 +133,10 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       setDetectedVoucherTier("");
     }
 
-    if (parsed.carrierName && (forceOverwrite || !carrierName)) {
+    if (
+      parsed.carrierName &&
+      (forceOverwrite || !carrierName || isGenericExpressCarrier(carrierName))
+    ) {
       setCarrierName(parsed.carrierName);
     }
     if (parsed.trackingNumber && (forceOverwrite || !trackingNumber)) {
@@ -239,6 +249,9 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         nextChoices: Array.isArray(data.nextChoices) ? data.nextChoices : [],
         fullEnglishMessage: data.fullEnglishMessage || "",
         fullPortugueseMessage: data.fullPortugueseMessage || "",
+        suggestedGuideIds: Array.isArray(data.suggestedGuideIds)
+          ? (data.suggestedGuideIds as string[])
+          : undefined,
       };
 
       const nextTurns = [...baseTurns, newTurn];
@@ -371,8 +384,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
     const parsed = parseShopeeOrderPaste(session.orderInput);
     setDetectedOrderSn(parsed.orderSn ?? null);
     setDetectedAmount(parsed.productAmount ?? null);
-    setCarrierName(session.carrierName || parsed.carrierName || "");
-    setTrackingNumber(session.trackingNumber || parsed.trackingNumber || "");
+    const resolvedTracking = session.trackingNumber || parsed.trackingNumber || "";
+    setTrackingNumber(resolvedTracking);
+    setCarrierName(
+      resolveCourierFromTracking(
+        resolvedTracking,
+        session.carrierName || parsed.carrierName
+      ) || ""
+    );
     setLastUpdateDate(session.lastUpdateDate || parsed.lastUpdateDate || "");
     setEstimatedDate(session.estimatedDate || parsed.estimatedDate || "");
     setLatestStatus(session.latestStatus || parsed.latestStatus || "");
@@ -438,13 +457,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   return (
     <div className="space-y-6">
       {/* Order Context & Chat Flow Launcher */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Interactive Chat Flow (Probing Questions &amp; Choices)
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
               Start with an order + customer message to generate guided bilingual replies with clarifying probing questions and clickable CX response choices.
             </p>
           </div>
@@ -453,11 +472,11 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
               <button
                 type="button"
                 onClick={() => void handleManualSyncFlow()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {cloudFlowSavedBadge ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     Synced to Cloud
                   </>
                 ) : (
@@ -472,7 +491,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
               <button
                 type="button"
                 onClick={() => setShowOrderStats((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {showOrderStats ? (
                   <>
@@ -490,7 +509,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
             <button
               type="button"
               onClick={handleResetAll}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Reset Flow
@@ -500,13 +519,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
         {/* Cloud Saved Chat Flow Sessions Bar */}
         {isSignedIn && savedSessions.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
                 <Cloud className="w-3.5 h-3.5 text-[#EE4D2D]" />
                 Saved Cloud Chat Flows ({savedSessions.length})
               </span>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
                 Resume across any PC
               </span>
             </div>
@@ -518,8 +537,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     key={session.id}
                     className={`inline-flex items-center rounded-lg border text-xs ${
                       isActive
-                        ? "border-[#EE4D2D] bg-orange-50/70 text-slate-900"
-                        : "border-slate-200 bg-slate-50/70 text-slate-700"
+                        ? "border-[#EE4D2D] bg-orange-50/70 dark:bg-[#EE4D2D]/15 text-slate-900 dark:text-slate-100"
+                        : "border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300"
                     }`}
                   >
                     <button
@@ -538,7 +557,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                         void onDeleteChatFlowSession(session.id);
                       }}
                       title="Delete Chat Flow session"
-                      className="pr-2 pl-1 py-1.5 text-slate-400 hover:text-red-600 cursor-pointer"
+                      className="pr-2 pl-1 py-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -552,7 +571,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         {/* Compact detected summary when collapsed */}
         {!showOrderStats &&
           (detectedOrderSn || carrierName || trackingNumber || detectedAmount) && (
-            <div className="mt-3 text-xs font-mono text-slate-600 tabular-nums">
+            <div className="mt-3 text-xs font-mono text-slate-600 dark:text-slate-400 tabular-nums">
               {[
                 detectedOrderSn ? `Order ${detectedOrderSn}` : null,
                 detectedAmount
@@ -573,7 +592,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
           <>
             {/* Quick Sample Loaders */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-slate-500 mr-1">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
                 Load example:
               </span>
               {quickPresets.map((preset) => (
@@ -594,7 +613,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     applyOrderInputWithAutoParse(preset.sampleInput, true);
                     setError(null);
                   }}
-                  className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-md hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   {preset.number}. {preset.title}
                 </button>
@@ -606,7 +625,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                   <label
                     htmlFor="chatflow-order-input"
-                    className="block text-xs font-medium text-slate-700"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300"
                   >
                     Order / Product Info &gt; Opening Customer Concern
                   </label>
@@ -615,7 +634,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     trackingNumber ||
                     detectedAmount ||
                     detectedVoucherTier) && (
-                    <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
                       {[
                         detectedOrderSn ? `Order ${detectedOrderSn}` : null,
                         detectedAmount
@@ -639,7 +658,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   value={orderInput}
                   onChange={(e) => applyOrderInputWithAutoParse(e.target.value)}
                   placeholder="Paste the Shopee Seller Center order + tracking log followed by CX> concern..."
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/70 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
                 />
               </div>
 
@@ -648,7 +667,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 <div>
                   <label
                     htmlFor="cf-last-update"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     Last Update [DATE]
                   </label>
@@ -658,13 +677,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={lastUpdateDate}
                     onChange={(e) => setLastUpdateDate(e.target.value)}
                     placeholder="03/11/2026"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-est-date"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     Est. Delivery [DATE]
                   </label>
@@ -674,13 +693,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={estimatedDate}
                     onChange={(e) => setEstimatedDate(e.target.value)}
                     placeholder="24/11/2026"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-tracking"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     [TRACKING]
                   </label>
@@ -688,15 +707,27 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     id="cf-tracking"
                     type="text"
                     value={trackingNumber}
-                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    onChange={(e) => {
+                      const nextTracking = e.target.value;
+                      setTrackingNumber(nextTracking);
+                      const autoCouriers = ["SPX", "Anjun Express", "Correios"];
+                      if (
+                        !carrierName.trim() ||
+                        isGenericExpressCarrier(carrierName) ||
+                        autoCouriers.includes(carrierName.trim())
+                      ) {
+                        const resolved = resolveCourierFromTracking(nextTracking);
+                        if (resolved) setCarrierName(resolved);
+                      }
+                    }}
                     placeholder="AJ261009127752101"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-status"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     [STATUS]
                   </label>
@@ -706,13 +737,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={latestStatus}
                     onChange={(e) => setLatestStatus(e.target.value)}
                     placeholder="em trânsito"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-carrier"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     Assigned Courier
                   </label>
@@ -721,14 +752,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     type="text"
                     value={carrierName}
                     onChange={(e) => setCarrierName(e.target.value)}
-                    placeholder="Expresso padrão"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    placeholder="SPX / Anjun Express / Correios"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-topic"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     [ISSUE TOPIC]
                   </label>
@@ -738,13 +769,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={issueTopic}
                     onChange={(e) => setIssueTopic(e.target.value)}
                     placeholder="Shopee Coins / Pix"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-voucher"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     [VOUCHER] (≤ R$25 tier)
                   </label>
@@ -754,13 +785,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={detectedVoucherTier}
                     onChange={(e) => setDetectedVoucherTier(e.target.value)}
                     placeholder="R$15"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="cf-spec"
-                    className="block text-[11px] font-medium text-slate-500 mb-1"
+                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >
                     [INSERT SPEC]
                   </label>
@@ -770,20 +801,20 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     value={productSpec}
                     onChange={(e) => setProductSpec(e.target.value)}
                     placeholder="Bivolt 110V/220V"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
-                <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                <label className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={includeProbingQuestions}
                     onChange={(e) =>
                       setIncludeProbingQuestions(e.target.checked)
                     }
-                    className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
+                    className="rounded border-slate-300 dark:border-slate-600 text-[#EE4D2D] focus:ring-[#EE4D2D]"
                   />
                   Include clarifying probing questions &amp; CX choices on every turn
                 </label>
@@ -792,7 +823,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   <div className="flex items-center gap-2">
                     <label
                       htmlFor="cf-tone"
-                      className="text-xs font-medium text-slate-600 whitespace-nowrap"
+                      className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap"
                     >
                       Tone:
                     </label>
@@ -800,7 +831,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                       id="cf-tone"
                       value={tone}
                       onChange={(e) => setTone(e.target.value as ToneOption)}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-900 focus:border-[#EE4D2D] focus:outline-none"
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#EE4D2D] focus:outline-none"
                     >
                       <option value={ToneOption.STANDARD}>Standard Polite</option>
                       <option value={ToneOption.EMPATHETIC}>
@@ -830,8 +861,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       </section>
 
       {error && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 dark:border-red-900/70 bg-red-50 dark:bg-red-950/50 px-4 py-3 text-xs text-red-800 dark:text-red-300">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
@@ -842,32 +873,32 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         return (
           <section
             key={turn.id}
-            className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden"
           >
             {/* CX Turn Banner */}
-            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-b border-slate-200">
+            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-mono font-semibold text-[#EE4D2D] tabular-nums">
                     TURN {String(turn.turnNumber).padStart(2, "0")}
                   </span>
-                  <span className="text-slate-400" aria-hidden="true">
+                  <span className="text-slate-400 dark:text-slate-500" aria-hidden="true">
                     ·
                   </span>
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
                     {turn.cxLabel}
                   </span>
                 </div>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {turn.category} · {turn.detectedScenario}
                 </span>
               </div>
-              <p className="mt-1.5 text-sm text-slate-900">{turn.cxMessage}</p>
+              <p className="mt-1.5 text-sm text-slate-900 dark:text-slate-100">{turn.cxMessage}</p>
             </div>
 
             {/* Agent Reply Header & Actions */}
-            <div className="px-5 sm:px-6 py-3.5 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <p className="text-xs text-slate-600">{turn.policySummary}</p>
+            <div className="px-5 sm:px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <p className="text-xs text-slate-600 dark:text-slate-400">{turn.policySummary}</p>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
@@ -878,11 +909,11 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     );
                     if (ok) markCopied(`${turn.id}-table`);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   {copiedId === `${turn.id}-table` ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       Copied Table
                     </>
                   ) : (
@@ -920,14 +951,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                  <tr className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     <th className="py-2.5 px-4 w-40">Section</th>
                     <th className="py-2.5 px-4 w-[38%]">English (for you)</th>
                     <th className="py-2.5 px-4 w-[42%]">Portuguese (send to CX)</th>
                     <th className="py-2.5 px-4 w-20 text-right">Copy</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 text-sm">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
                   {turn.rows.map((row, idx) => {
                     const isProbingRow = /probing|question|clarif/i.test(
                       row.section
@@ -937,13 +968,13 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                         key={`${turn.id}-row-${idx}`}
                         className={
                           row.isKeyRule
-                            ? "bg-orange-50/55 hover:bg-orange-50/80 transition-colors"
+                            ? "bg-orange-50/55 dark:bg-[#EE4D2D]/12 hover:bg-orange-50/80 dark:hover:bg-[#EE4D2D]/20 transition-colors"
                             : isProbingRow
-                              ? "bg-slate-50/80 hover:bg-slate-100/70 transition-colors"
-                              : "hover:bg-slate-50/80 transition-colors"
+                              ? "bg-slate-50/80 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-colors"
+                              : "hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
                         }
                       >
-                        <td className="py-3 px-4 align-top font-medium text-slate-900 text-xs">
+                        <td className="py-3 px-4 align-top font-medium text-slate-900 dark:text-slate-100 text-xs">
                           <div>{row.section}</div>
                           {row.isKeyRule && (
                             <div className="text-[11px] font-semibold text-[#EE4D2D] mt-0.5">
@@ -951,15 +982,15 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                             </div>
                           )}
                           {!row.isKeyRule && isProbingRow && (
-                            <div className="text-[11px] font-medium text-slate-500 mt-0.5">
+                            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                               Probing question
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-4 align-top text-slate-600 leading-relaxed">
+                        <td className="py-3 px-4 align-top text-slate-600 dark:text-slate-400 leading-relaxed">
                           {row.english}
                         </td>
-                        <td className="py-3 px-4 align-top text-slate-900 leading-relaxed">
+                        <td className="py-3 px-4 align-top text-slate-900 dark:text-slate-100 leading-relaxed">
                           {row.portuguese}
                         </td>
                         <td className="py-3 px-4 align-top text-right">
@@ -970,10 +1001,10 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                               if (ok) markCopied(`${turn.id}-row-${idx}`);
                             }}
                             title="Copy Portuguese sentence"
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             {copiedId === `${turn.id}-row-${idx}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             ) : (
                               <Copy className="w-3.5 h-3.5" />
                             )}
@@ -988,8 +1019,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
             {/* Clarifying Probing Questions Highlight */}
             {turn.probingQuestions.length > 0 && (
-              <div className="px-5 sm:px-6 py-4 bg-slate-50/70 border-t border-slate-200 space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+              <div className="px-5 sm:px-6 py-4 bg-slate-50/70 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
                   <HelpCircle className="w-3.5 h-3.5 text-[#EE4D2D]" />
                   Probing Questions Included to Guide CX
                 </div>
@@ -997,11 +1028,11 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   {turn.probingQuestions.map((pq, idx) => (
                     <div
                       key={`${turn.id}-pq-${idx}`}
-                      className="rounded-lg border border-slate-200 bg-white p-3 flex items-start justify-between gap-3"
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex items-start justify-between gap-3"
                     >
                       <div className="space-y-1 text-xs">
-                        <p className="text-slate-600">{pq.english}</p>
-                        <p className="font-medium text-slate-900">
+                        <p className="text-slate-600 dark:text-slate-400">{pq.english}</p>
+                        <p className="font-medium text-slate-900 dark:text-slate-100">
                           {pq.portuguese}
                         </p>
                       </div>
@@ -1012,10 +1043,10 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                           if (ok) markCopied(`${turn.id}-pq-${idx}`);
                         }}
                         title="Copy PT-BR probing question"
-                        className="p-1.5 text-slate-500 hover:text-[#EE4D2D] border border-slate-200 rounded hover:border-[#EE4D2D] shrink-0 cursor-pointer"
+                        className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#EE4D2D] border border-slate-200 dark:border-slate-700 rounded hover:border-[#EE4D2D] shrink-0 cursor-pointer"
                       >
                         {copiedId === `${turn.id}-pq-${idx}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
@@ -1027,15 +1058,15 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
             )}
 
             {/* Editable PT-BR Message */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-slate-200 space-y-2">
+            <div className="px-5 sm:px-6 py-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 space-y-2">
               <div className="flex items-center justify-between gap-4">
                 <label
                   htmlFor={`pt-msg-${turn.id}`}
-                  className="text-xs font-semibold text-slate-700"
+                  className="text-xs font-semibold text-slate-700 dark:text-slate-300"
                 >
                   Ready-to-Send Portuguese Message (Turn {turn.turnNumber})
                 </label>
-                <span className="text-xs text-slate-500 tabular-nums">
+                <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                   {editedPt.length} chars
                 </span>
               </div>
@@ -1049,26 +1080,31 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     [turn.id]: e.target.value,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
               />
             </div>
+
+            <VisualGuideStrip
+              guideIds={turn.suggestedGuideIds}
+              onBrowseAll={onOpenVisualGuides}
+            />
           </section>
         );
       })}
 
       {/* Loading Skeleton */}
       {isLoading && (
-        <section className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-            <div className="h-5 w-64 bg-slate-100 rounded animate-pulse" />
-            <div className="h-4 w-28 bg-slate-100 rounded animate-pulse" />
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="h-5 w-64 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+            <div className="h-4 w-28 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
           </div>
           <div className="space-y-3">
             {[1, 2, 3, 4].map((n) => (
               <div key={n} className="grid grid-cols-12 gap-4 py-2">
-                <div className="col-span-2 h-4 bg-slate-100 rounded animate-pulse" />
-                <div className="col-span-5 h-4 bg-slate-100 rounded animate-pulse" />
-                <div className="col-span-5 h-4 bg-slate-100 rounded animate-pulse" />
+                <div className="col-span-2 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                <div className="col-span-5 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                <div className="col-span-5 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
               </div>
             ))}
           </div>
@@ -1077,20 +1113,20 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
       {/* Next CX Choices & Continue Chat Flow Panel */}
       {!isLoading && latestTurn && (
-        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 Next CX Choices — How did the customer reply?
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Tap a predicted CX choice below or paste the customer&apos;s actual Shopee Chat reply to generate the next turn.
               </p>
             </div>
             <button
               type="button"
               onClick={handleUndoTurn}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Undo2 className="w-3.5 h-3.5" />
               Undo Turn {latestTurn.turnNumber}
@@ -1105,17 +1141,17 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   key={choice.id}
                   type="button"
                   onClick={() => void handleSelectChoice(choice)}
-                  className="text-left p-3 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-orange-50/60 hover:border-[#EE4D2D] transition-colors cursor-pointer group"
+                  className="text-left p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 hover:bg-orange-50/60 dark:hover:bg-[#EE4D2D]/15 hover:border-[#EE4D2D] transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-900 group-hover:text-[#EE4D2D]">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-[#EE4D2D]">
                       {choice.label}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-400 group-hover:text-[#EE4D2D] shrink-0">
+                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 group-hover:text-[#EE4D2D] shrink-0">
                       Select →
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600 line-clamp-2">
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                     {choice.cxMessage}
                   </p>
                 </button>
@@ -1125,7 +1161,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
           {/* Optional Probing Question Steering for Next Turn */}
           <div className="space-y-2 pt-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
               <Sparkles className="w-3.5 h-3.5 text-[#EE4D2D]" />
               <span>Optional: Steer the next probing question</span>
             </div>
@@ -1142,7 +1178,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     className={
                       isSelected
                         ? "px-2.5 py-1 text-[11px] font-medium rounded-md border border-[#EE4D2D] bg-[#EE4D2D] text-white transition-colors cursor-pointer"
-                        : "px-2.5 py-1 text-[11px] font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
+                        : "px-2.5 py-1 text-[11px] font-medium rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors cursor-pointer"
                     }
                   >
                     {preset}
@@ -1162,7 +1198,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
               value={customCxReply}
               onChange={(e) => setCustomCxReply(e.target.value)}
               placeholder="Or type/paste CX's exact message (e.g., 'Já paguei faz 2 dias no Pix', 'O porteiro disse que não chegou')..."
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
+              className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
             />
             <button
               type="submit"

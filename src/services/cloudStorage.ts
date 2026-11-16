@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   onSnapshot,
   query,
   serverTimestamp,
@@ -30,6 +31,10 @@ import {
   ScriptScenario,
   StoreRuleEntry,
   ToneOption,
+  UsageStatEntry,
+  UsageStatEventType,
+  UsageStatItemType,
+  UsageTrackEventPayload,
 } from "../types/cs";
 
 function sanitizeId(raw: string): string {
@@ -84,6 +89,15 @@ function sanitizePaths(paths?: ScriptPath[]): ScriptPath[] | undefined {
   }));
 }
 
+function sanitizeGuideIds(ids?: string[]): string[] | undefined {
+  if (!Array.isArray(ids)) return undefined;
+  const cleaned = ids
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 6);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 // ==========================================
 // 1. CLOUD SCRIPT LIBRARY (All Scripts)
 // ==========================================
@@ -125,6 +139,9 @@ export function subscribeCustomScripts(
               ...(Array.isArray(data.paths) && data.paths.length > 0
                 ? { paths: data.paths as ScriptPath[] }
                 : {}),
+              ...(Array.isArray(data.guideIds) && data.guideIds.length > 0
+                ? { guideIds: data.guideIds as string[] }
+                : {}),
               isCustom: data.isCustom === false ? false : true,
             } satisfies ScriptScenario,
           };
@@ -155,46 +172,83 @@ export async function seedDefaultCloudCustomScriptsIfNeeded(
     const userRef = doc(db, userPath);
     const userSnap = await getDoc(userRef);
     const userData = userSnap.exists() ? userSnap.data() : null;
-    if (userData?.scriptsSeeded === true) {
-      return;
-    }
 
     const q = query(collection(db, scriptsPath), where("ownerId", "==", userId));
     const existingSnap = await getDocs(q);
-    const existingIds = new Set(existingSnap.docs.map((d) => d.id));
+    const existingById = new Map(existingSnap.docs.map((d) => [d.id, d.data()]));
 
     const batch = writeBatch(db);
-    let addedCount = 0;
+    let mutationCount = 0;
 
     INITIAL_SCENARIOS.forEach((scenario) => {
       const safeId = sanitizeId(scenario.id);
-      if (existingIds.has(safeId)) return;
       const safePaths = sanitizePaths(scenario.paths);
-      batch.set(doc(db, `${scriptsPath}/${safeId}`), {
-        ownerId: userId,
-        title: clamp(scenario.title, 160),
-        category: scenario.category,
-        whenToUse: clamp(scenario.whenToUse, 600),
-        policyRule: clamp(scenario.policyRule, 800),
-        sampleInput: clamp(scenario.sampleInput, 2500),
-        rows: sanitizeRows(scenario.rows),
-        ...(safePaths ? { paths: safePaths } : {}),
-        sortOrder: Math.min(1000, Math.max(0, scenario.number)),
-        isCustom: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      addedCount++;
+      const safeGuides = sanitizeGuideIds(scenario.guideIds);
+      const existingData = existingById.get(safeId);
+
+      if (!existingData) {
+        batch.set(doc(db, `${scriptsPath}/${safeId}`), {
+          ownerId: userId,
+          title: clamp(scenario.title, 160),
+          category: scenario.category,
+          whenToUse: clamp(scenario.whenToUse, 600),
+          policyRule: clamp(scenario.policyRule, 800),
+          sampleInput: clamp(scenario.sampleInput, 2500),
+          rows: sanitizeRows(scenario.rows),
+          ...(safePaths ? { paths: safePaths } : {}),
+          ...(safeGuides ? { guideIds: safeGuides } : {}),
+          sortOrder: Math.min(1000, Math.max(0, scenario.number)),
+          isCustom: false,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        mutationCount++;
+        return;
+      }
+
+      // Safely upgrade unmodified built-in defaults when catalog rules/paths improve
+      if (existingData.isCustom !== false) return;
+
+      const rows = Array.isArray(existingData.rows) ? existingData.rows : [];
+      const paths = Array.isArray(existingData.paths) ? existingData.paths : [];
+      const hasSection = (kw: string) =>
+        rows.some((r: Record<string, unknown>) =>
+          String(r?.section || "").toLowerCase().includes(kw.toLowerCase())
+        );
+
+      const needsPlaybookUpgrade =
+        (safeId === "s2" && !hasSection("Short circuit")) ||
+        (safeId === "s4" && !hasSection("Normal gap")) ||
+        ((safeId === "s10" || safeId === "s11") && !hasSection("Assurance")) ||
+        (safeId === "s14" && paths.length < 3);
+
+      if (needsPlaybookUpgrade) {
+        batch.update(doc(db, `${scriptsPath}/${safeId}`), {
+          title: clamp(scenario.title, 160),
+          category: scenario.category,
+          whenToUse: clamp(scenario.whenToUse, 600),
+          policyRule: clamp(scenario.policyRule, 800),
+          sampleInput: clamp(scenario.sampleInput, 2500),
+          rows: sanitizeRows(scenario.rows),
+          ...(safePaths ? { paths: safePaths } : {}),
+          ...(safeGuides ? { guideIds: safeGuides } : {}),
+          sortOrder: Math.min(1000, Math.max(0, scenario.number)),
+          isCustom: false,
+          updatedAt: serverTimestamp(),
+        });
+        mutationCount++;
+      }
     });
 
-    if (userSnap.exists()) {
+    if (userSnap.exists() && userData?.scriptsSeeded !== true) {
       batch.update(userRef, {
         scriptsSeeded: true,
         updatedAt: serverTimestamp(),
       });
+      mutationCount++;
     }
 
-    if (addedCount > 0 || userSnap.exists()) {
+    if (mutationCount > 0) {
       await batch.commit();
     }
   } catch (error) {
@@ -221,6 +275,7 @@ export async function resetCloudCustomScriptsToDefaults(
     INITIAL_SCENARIOS.forEach((scenario) => {
       const safeId = sanitizeId(scenario.id);
       const safePaths = sanitizePaths(scenario.paths);
+      const safeGuides = sanitizeGuideIds(scenario.guideIds);
       batch.set(doc(db, `${scriptsPath}/${safeId}`), {
         ownerId: userId,
         title: clamp(scenario.title, 160),
@@ -230,6 +285,7 @@ export async function resetCloudCustomScriptsToDefaults(
         sampleInput: clamp(scenario.sampleInput, 2500),
         rows: sanitizeRows(scenario.rows),
         ...(safePaths ? { paths: safePaths } : {}),
+        ...(safeGuides ? { guideIds: safeGuides } : {}),
         sortOrder: Math.min(1000, Math.max(0, scenario.number)),
         isCustom: false,
         createdAt: serverTimestamp(),
@@ -253,6 +309,7 @@ export async function createCloudCustomScript(
   const scriptId = sanitizeId(`custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
   const path = `users/${userId}/customScripts/${scriptId}`;
   const safePaths = sanitizePaths(input.paths);
+  const safeGuides = sanitizeGuideIds(input.guideIds);
   try {
     await setDoc(doc(db, path), {
       ownerId: userId,
@@ -263,6 +320,7 @@ export async function createCloudCustomScript(
       sampleInput: clamp(input.sampleInput || "", 2500),
       rows: sanitizeRows(input.rows),
       ...(safePaths ? { paths: safePaths } : {}),
+      ...(safeGuides ? { guideIds: safeGuides } : {}),
       sortOrder: Math.min(
         1000,
         Math.max(0, Math.round(typeof input.sortOrder === "number" ? input.sortOrder : 500))
@@ -285,6 +343,7 @@ export async function updateCloudCustomScript(
   const safeId = sanitizeId(scriptId);
   const path = `users/${userId}/customScripts/${safeId}`;
   const safePaths = sanitizePaths(input.paths);
+  const safeGuides = sanitizeGuideIds(input.guideIds);
   const fields: Record<string, unknown> = {
     title: clamp(input.title || "Custom Script", 160),
     category: input.category,
@@ -296,6 +355,9 @@ export async function updateCloudCustomScript(
   };
   if (safePaths) {
     fields.paths = safePaths;
+  }
+  if (safeGuides) {
+    fields.guideIds = safeGuides;
   }
   if (typeof input.sortOrder === "number") {
     fields.sortOrder = Math.min(1000, Math.max(0, Math.round(input.sortOrder)));
@@ -352,6 +414,7 @@ export async function applyLearnedScriptUpdates(
     const cleanRule = clamp(item.policyRule || "Follows Shopee Brazil store policy.", 800);
     const cleanSample = clamp(item.sampleInput || `${cleanTitle} > Customer asks about this scenario.`, 2500);
     const cleanRows = sanitizeRows(item.rows);
+    const cleanGuides = sanitizeGuideIds(item.guideIds);
     const cleanCategory = Object.values(ScenarioCategory).includes(item.category)
       ? item.category
       : ScenarioCategory.GENERAL;
@@ -365,6 +428,7 @@ export async function applyLearnedScriptUpdates(
     const target = matchedById ?? matchedByTitle;
 
     if (target) {
+      const resolvedGuides = cleanGuides ?? sanitizeGuideIds(target.guideIds);
       const sameRows =
         target.rows.length === cleanRows.length &&
         target.rows.every(
@@ -373,11 +437,14 @@ export async function applyLearnedScriptUpdates(
             r.english.trim() === cleanRows[idx].english &&
             r.portuguese.trim() === cleanRows[idx].portuguese
         );
+      const sameGuides =
+        (target.guideIds ?? []).join(",") === (resolvedGuides ?? []).join(",");
       if (
         target.title.trim() === cleanTitle &&
         target.whenToUse.trim() === cleanWhen &&
         target.policyRule.trim() === cleanRule &&
-        sameRows
+        sameRows &&
+        sameGuides
       ) {
         continue;
       }
@@ -390,6 +457,7 @@ export async function applyLearnedScriptUpdates(
         sampleInput: cleanSample,
         rows: cleanRows,
         paths: target.paths,
+        guideIds: resolvedGuides,
         sortOrder: target.sortOrder ?? target.number,
         isCustom: target.isCustom,
       });
@@ -408,6 +476,7 @@ export async function applyLearnedScriptUpdates(
         policyRule: cleanRule,
         sampleInput: cleanSample,
         rows: cleanRows,
+        guideIds: cleanGuides,
         sortOrder: Math.min(1000, nextSortOrder++),
         isCustom: true,
       });
@@ -545,12 +614,41 @@ export async function seedDefaultCloudStoreRulesIfEmpty(
   try {
     const q = query(collection(db, path), where("ownerId", "==", userId));
     const snap = await getDocs(q);
-    if (!snap.empty) return;
+    if (snap.empty) {
+      const batch = writeBatch(db);
+      DEFAULT_STORE_RULES.forEach((rule) => {
+        const ref = doc(db, `${path}/${sanitizeId(rule.id)}`);
+        batch.set(ref, {
+          ownerId: userId,
+          topic: clamp(rule.topic, 160),
+          english: clamp(rule.english, 2000),
+          portuguese: clamp(rule.portuguese, 2000),
+          isPrimary: Boolean(rule.isPrimary),
+          sortOrder: rule.sortOrder,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      return;
+    }
+
+    const existingById = new Map(snap.docs.map((d) => [d.id, d.data()]));
+    const hasCourierRule = snap.docs.some((d) => {
+      const data = d.data();
+      const text = `${String(data.topic || "")} ${String(data.english || "")}`.toLowerCase();
+      return text.includes("anjun") && text.includes("correios");
+    });
 
     const batch = writeBatch(db);
-    DEFAULT_STORE_RULES.forEach((rule) => {
-      const ref = doc(db, `${path}/${sanitizeId(rule.id)}`);
-      batch.set(ref, {
+    let mutationCount = 0;
+
+    for (const rule of DEFAULT_STORE_RULES) {
+      const safeId = sanitizeId(rule.id);
+      if (existingById.has(safeId)) continue;
+      if (safeId === "default-13" && hasCourierRule) continue;
+
+      batch.set(doc(db, `${path}/${safeId}`), {
         ownerId: userId,
         topic: clamp(rule.topic, 160),
         english: clamp(rule.english, 2000),
@@ -560,8 +658,55 @@ export async function seedDefaultCloudStoreRulesIfEmpty(
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-    });
-    await batch.commit();
+      mutationCount++;
+    }
+
+    const rulesToSync: Array<{ id: string; legacyPrefix: string; checkMissing: string }> = [
+      {
+        id: "default-3",
+        legacyPrefix: "Format dates in Brazilian DD/MM/YYYY",
+        checkMissing: "5–14",
+      },
+      {
+        id: "default-4",
+        legacyPrefix: "Never say an order in customs inspection is lost",
+        checkMissing: "never promise a specific delivery date",
+      },
+      {
+        id: "default-7",
+        legacyPrefix: "Never promise an immediate refund. Always request a short video",
+        checkMissing: "Short circuit",
+      },
+      {
+        id: "default-11",
+        legacyPrefix: "Every cancellation, refund, delivery delay",
+        checkMissing: "Empathy",
+      },
+    ];
+    for (const item of rulesToSync) {
+      const existingData = existingById.get(item.id);
+      const latestDefault = DEFAULT_STORE_RULES.find((r) => r.id === item.id);
+      if (!existingData || !latestDefault) continue;
+      const currentEn = String(existingData.english || "");
+      const hasUpdate =
+        currentEn.includes(item.checkMissing) ||
+        (item.checkMissing === "5–14" && currentEn.includes("5-14"));
+      if (!hasUpdate && currentEn.startsWith(item.legacyPrefix)) {
+        batch.update(doc(db, `${path}/${item.id}`), {
+          topic: clamp(latestDefault.topic, 160),
+          english: clamp(latestDefault.english, 2000),
+          portuguese: clamp(latestDefault.portuguese, 2000),
+          isPrimary: Boolean(latestDefault.isPrimary),
+          sortOrder: latestDefault.sortOrder,
+          updatedAt: serverTimestamp(),
+        });
+        mutationCount++;
+      }
+    }
+
+    if (mutationCount > 0) {
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -718,6 +863,9 @@ function sanitizeChatFlowTurns(turns: ChatFlowTurn[]): ChatFlowTurn[] {
     })),
     fullEnglishMessage: clamp(t.fullEnglishMessage || "", 8000),
     fullPortugueseMessage: clamp(t.fullPortugueseMessage || "", 8000),
+    ...(sanitizeGuideIds(t.suggestedGuideIds)
+      ? { suggestedGuideIds: sanitizeGuideIds(t.suggestedGuideIds) }
+      : {}),
     ...(t.editedPortuguese
       ? { editedPortuguese: clamp(t.editedPortuguese, 8000) }
       : {}),
@@ -879,6 +1027,166 @@ export async function deleteCloudChatFlowSession(
   const path = `users/${userId}/chatFlows/${safeId}`;
   try {
     await deleteDoc(doc(db, path));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// ==========================================
+// 6. CLOUD USAGE STATISTICS (Scripts & Rules)
+// ==========================================
+
+export function subscribeUsageStats(
+  userId: string,
+  onData: (stats: UsageStatEntry[]) => void
+) {
+  const path = `users/${userId}/usageStats`;
+  const q = query(collection(db, path), where("ownerId", "==", userId));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs
+        .map((d) => {
+          const data = d.data();
+          const createdAt = timestampToIso(data.createdAt);
+          const updatedAt = timestampToIso(data.updatedAt);
+          return {
+            id: d.id,
+            itemType:
+              data.itemType === "rule"
+                ? ("rule" as UsageStatItemType)
+                : ("script" as UsageStatItemType),
+            itemId: String(data.itemId || ""),
+            itemTitle: String(data.itemTitle || "Untitled"),
+            category: String(data.category || ""),
+            appliedCount:
+              typeof data.appliedCount === "number" ? data.appliedCount : 0,
+            accessedCount:
+              typeof data.accessedCount === "number" ? data.accessedCount : 0,
+            lastEvent:
+              data.lastEvent === "accessed"
+                ? ("accessed" as UsageStatEventType)
+                : ("applied" as UsageStatEventType),
+            createdAt,
+            updatedAt,
+          } satisfies UsageStatEntry;
+        })
+        .sort(
+          (a, b) =>
+            b.appliedCount + b.accessedCount - (a.appliedCount + a.accessedCount)
+        );
+
+      onData(items);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function recordCloudUsageEvents(
+  userId: string,
+  events: UsageTrackEventPayload[]
+): Promise<void> {
+  if (!userId || events.length === 0) return;
+
+  const aggregated = new Map<
+    string,
+    {
+      statId: string;
+      itemType: UsageStatItemType;
+      itemId: string;
+      itemTitle: string;
+      category: string;
+      appliedDelta: number;
+      accessedDelta: number;
+      lastEvent: UsageStatEventType;
+    }
+  >();
+
+  for (const ev of events) {
+    if (!ev.itemId?.trim()) continue;
+    const safeItemId = sanitizeId(ev.itemId).slice(0, 110);
+    const statId = sanitizeId(`${ev.itemType}_${safeItemId}`);
+    const cleanTitle = clamp(
+      ev.itemTitle || (ev.itemType === "script" ? "CS Script" : "Store Rule"),
+      200
+    );
+    const cleanCategory = clamp(
+      ev.category || (ev.itemType === "script" ? "General" : "Policy"),
+      80
+    );
+    const existing = aggregated.get(statId);
+    if (existing) {
+      if (ev.event === "applied") existing.appliedDelta += 1;
+      else existing.accessedDelta += 1;
+      existing.itemTitle = cleanTitle;
+      existing.category = cleanCategory;
+      existing.lastEvent = ev.event;
+    } else {
+      aggregated.set(statId, {
+        statId,
+        itemType: ev.itemType,
+        itemId: safeItemId,
+        itemTitle: cleanTitle,
+        category: cleanCategory,
+        appliedDelta: ev.event === "applied" ? 1 : 0,
+        accessedDelta: ev.event === "accessed" ? 1 : 0,
+        lastEvent: ev.event,
+      });
+    }
+  }
+
+  const basePath = `users/${userId}/usageStats`;
+  for (const entry of aggregated.values()) {
+    const docPath = `${basePath}/${entry.statId}`;
+    const ref = doc(db, docPath);
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const updateFields: Record<string, unknown> = {
+          itemTitle: entry.itemTitle,
+          category: entry.category,
+          lastEvent: entry.lastEvent,
+          updatedAt: serverTimestamp(),
+        };
+        if (entry.appliedDelta > 0) {
+          updateFields.appliedCount = increment(entry.appliedDelta);
+        }
+        if (entry.accessedDelta > 0) {
+          updateFields.accessedCount = increment(entry.accessedDelta);
+        }
+        await updateDoc(ref, updateFields);
+      } else {
+        await setDoc(ref, {
+          ownerId: userId,
+          itemType: entry.itemType,
+          itemId: entry.itemId,
+          itemTitle: entry.itemTitle,
+          category: entry.category,
+          appliedCount: entry.appliedDelta,
+          accessedCount: entry.accessedDelta,
+          lastEvent: entry.lastEvent,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, docPath);
+    }
+  }
+}
+
+export async function resetCloudUsageStats(userId: string): Promise<void> {
+  const path = `users/${userId}/usageStats`;
+  try {
+    const q = query(collection(db, path), where("ownerId", "==", userId));
+    const snap = await getDocs(q);
+    if (snap.empty) return;
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

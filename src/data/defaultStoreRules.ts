@@ -25,19 +25,19 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
     id: "default-3",
     topic: "Delivery Time Inquiry & Expedite Order",
     english:
-      "Format dates in Brazilian DD/MM/YYYY, share latest tracking status, courier, and Est. Delivery. Always include courier follow-up ('we follow up this to courier' / 'we expedite follow your order to courier') and Shopee Guarantee assurance.",
+      "Format dates in Brazilian DD/MM/YYYY, share latest tracking status, resolved courier, and Est. Delivery. Reassure CX ('no worries') that the date is only an estimate—international orders usually arrive within 5–14 days. Always include courier follow-up ('we follow up this to courier' / 'we expedite follow your order to courier') and Shopee Guarantee assurance.",
     portuguese:
-      'Use datas em DD/MM/AAAA e informe status, transportadora e previsão de entrega. Sempre inclua "nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora", além da Garantia Shopee.',
+      'Use datas em DD/MM/AAAA e informe status, transportadora e previsão. Tranquilize o cliente que essa data é apenas uma estimativa (pedidos internacionais costumam chegar em apenas 5 a 14 dias). Sempre inclua "nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora", além da Garantia Shopee.',
     isPrimary: false,
     sortOrder: 2,
   },
   {
     id: "default-4",
-    topic: "Customs Delay ('Inspeção na Alfândega')",
+    topic: "Customs Delay ('Inspeção na Alfândega') & Arrived in Brazil",
     english:
-      "Never tell the customer the package is lost and do not suggest a refund unless they ask. Always include both required courier follow-up phrases and reassure them under Shopee Guarantee.",
+      "Never volunteer 'lost' or 'refund' unless CX asks, and never promise a specific delivery date of your own. Explain customs or domestic sorting gaps cleanly, include both required follow-up phrases ('we follow up this to courier' / 'we expedite follow your order to courier'), and reassure under Shopee Guarantee.",
     portuguese:
-      'Nunca diga que o pedido foi perdido. Sempre inclua "nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora", com segurança pela Garantia Shopee.',
+      'Nunca mencione pedido perdido nem ofereça reembolso sem o cliente pedir, e nunca prometa data fixa de entrega por conta própria. Explique a triagem local/alfândega, inclua "nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora", com Garantia Shopee.',
     isPrimary: false,
     sortOrder: 3,
   },
@@ -63,11 +63,11 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
   },
   {
     id: "default-7",
-    topic: "Product Defect / Malfunction",
+    topic: "Product Defect / Malfunction (Ask Video First)",
     english:
-      "Never promise an immediate refund. Always request a short video demonstrating the issue first, share basic checks (power connection, ventilation), and reassure under Shopee Guarantee. If proof sent & unresolved, guide to 'Return/Refund'.",
+      "Never guarantee an immediate return or refund on the spot. Always request a short video or photo first and say our team will review it, share common troubleshooting checks (1. Power supply, 2. Overheating/ventilation, 3. Loose connections, 4. Short circuit/wire insulation), and reassure under Shopee Guarantee.",
     portuguese:
-      'Nunca prometa reembolso imediato. Peça primeiro um vídeo curto, sugira verificações básicas (energia, conexões, ventilação) e assegure pela Garantia Shopee. Se persistir após o vídeo, oriente para "Devolução/Reembolso".',
+      'Nunca garanta devolução ou reembolso imediato na hora. Peça primeiro um vídeo curto ou foto para análise da equipe, sugira verificações comuns (1. Fonte/voltagem, 2. Superaquecimento/ventilação, 3. Conexões soltas, 4. Curto-circuito/isolamento) e assegure pela Garantia Shopee.',
     isPrimary: false,
     sortOrder: 6,
   },
@@ -103,12 +103,82 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
   },
   {
     id: "default-11",
-    topic: "Mandatory Shopee Guarantee ('Garantia Shopee') Assurance",
+    topic: "Mandatory Assurance & Empathy (All Replies)",
     english:
-      "Every cancellation, refund, delivery delay, expedite, quality, or unpaid-order response must include a clear assurance row confirming their money/order is protected by Shopee Guarantee.",
+      "Every Reply Generator response must include an explicit Assurance row confirming their order/money is protected by Shopee Guarantee (and for Est. Delivery inquiries, reassure them 'no worries'—that date is only an estimate since international orders usually arrive within 5–14 days), plus genuine Empathy whenever the customer is worried, frustrated, delayed, or facing an issue.",
     portuguese:
-      "Todo atendimento de cancelamento, reembolso, atraso, agilização, qualidade ou pagamento pendente deve incluir uma garantia clara de que o valor e o pedido estão protegidos pela Garantia Shopee.",
-    isPrimary: false,
+      'Todo atendimento deve incluir uma linha clara de Garantia ("Garantia Shopee") — nos casos de prazo, tranquilizando que a data é apenas uma estimativa (pedidos internacionais costumam chegar em 5 a 14 dias) — e empatia sincera sempre que o cliente demonstrar preocupação, atraso, frustração ou problema.',
+    isPrimary: true,
     sortOrder: 10,
+  },
+  {
+    id: "default-12",
+    topic: "Official Shopee BR Refund SLA & In-App UI Paths",
+    english:
+      "Refund SLA: Pix, Boleto (checking account), and Caixa Virtual Debit take up to 3 calendar days; ShopeePay (and Boleto -> ShopeePay) up to 1 calendar day; Credit Card / Google Pay up to 2 billing statements; SParcelado up to 7 calendar days. Always use exact PT-BR labels ('Eu' -> 'A Caminho' -> 'Pedir reembolso', 'Cancelar Pedido', 'Central de Ajuda' -> 'Chat Shopee' Mon-Fri 08h-22h / Sat-Sun 08h-20h).",
+    portuguese:
+      'Prazos de reembolso: Pix, Boleto (conta corrente) e Débito Caixa até 3 dias corridos; ShopeePay até 1 dia corrido; Cartão de Crédito/Google Pay em até 2 faturas; SParcelado até 7 dias corridos. Sempre oriente os botões exatos do app ("Pedir reembolso", "Cancelar Pedido", "Central de Ajuda" -> "Chat Shopee").',
+    isPrimary: false,
+    sortOrder: 11,
+  },
+  {
+    id: "default-13",
+    topic: "Actual Courier Mapping (Expresso Padrão)",
+    english:
+      "Even when Shopee Seller Center displays 'Expresso padrão', identify the actual courier from the tracking prefix: starts with 'BR' = SPX, starts with 'AJ' = Anjun Express, any other tracking number (not BR or AJ) = Correios. Always name the real courier in replies.",
+    portuguese:
+      'Mesmo quando constar "Expresso padrão" no sistema, identifique a transportadora real pelo código de rastreio: iniciado em "BR" = SPX, iniciado em "AJ" = Anjun Express, e outros códigos (não BR/AJ) = Correios. Informe sempre a transportadora real ao cliente.',
+    isPrimary: true,
+    sortOrder: 12,
+  },
+  {
+    id: "default-14",
+    topic: "Never Volunteer Lost/Refund, Promised Dates, or Guessed Specs",
+    english:
+      "Never mention 'lost' or 'refund' unless the customer explicitly asks. Never invent your own promised delivery dates. Answer product specs strictly from the listing without guessing, and never confirm charged billing amounts as the seller.",
+    portuguese:
+      'Nunca mencione "perdido" ou "reembolso" sem o cliente pedir. Nunca prometa datas de entrega por conta própria. Responda especificações apenas conforme o anúncio e nunca confirme valores cobrados pela Shopee.',
+    isPrimary: true,
+    sortOrder: 13,
+  },
+  {
+    id: "default-15",
+    topic: "Past EDD With Fresh Tracking Scan Today",
+    english:
+      "When the Estimated Delivery Date has passed yet tracking shows a fresh update today, acknowledge the missed EDD honestly instead of quoting it as still valid, highlight today's newest movement scan, explain international customs/local distribution delays, and include both courier follow-up phrases + Shopee Guarantee.",
+    portuguese:
+      'Quando a data estimada já passou mas há atualização de rastreio hoje, reconheça o atraso com transparência em vez de citar o prazo antigo como válido, destaque a nova movimentação de hoje e inclua ambas as frases de acompanhamento junto à transportadora + Garantia Shopee.',
+    isPrimary: false,
+    sortOrder: 14,
+  },
+  {
+    id: "default-16",
+    topic: "De-Escalation (Threats, Procon, Lawyer)",
+    english:
+      "When CX is angry or threatens complaints, Procon, or a lawyer: stay calm, never argue or defend, never promise a specific delivery day, share tracking/customs context + both courier follow-up phrases + Shopee Guarantee, and only add the 'Return/Refund' step if they demand their money back.",
+    portuguese:
+      'Em ameaças, reclamações ou menção a advogado/Procon: mantenha a calma, não discuta, nunca prometa data específica de entrega, informe o status e acompanhamento junto à transportadora + Garantia Shopee, e só adicione "Devolução/Reembolso" se exigirem o dinheiro de volta.',
+    isPrimary: false,
+    sortOrder: 15,
+  },
+  {
+    id: "default-17",
+    topic: "Positive / Early-Stage & Already-Received Tone",
+    english:
+      "For positive or eager early messages right after payment ('hope it arrives soon'), match the warm tone and quote current status + EDD (5–14 days estimate) without unnecessary follow-up/escalation text. For already-received parcels with un-updated tracking, simply reassure that the driver needs a little time to scan as delivered.",
+    portuguese:
+      'Para mensagens positivas logo após o pagamento, mantenha o tom acolhedor informando status e previsão (5 a 14 dias) sem texto desnecessário de atraso. Para pedidos já entregues sem atualização no rastreio, apenas tranquilize sobre a baixa do entregador.',
+    isPrimary: false,
+    sortOrder: 16,
+  },
+  {
+    id: "default-18",
+    topic: "Canceled Discrepancy, Invalid Orders & Installment Billing",
+    english:
+      "If CX claims an order was canceled without refund while system shows paid/shipped, state the actual system status and redirect refund/cancellation disputes to Shopee. If order is Invalid/Unpaid with no payment date, explain no payment was captured so store cannot refund. For Airpay/credit card installments or billing amounts, redirect directly to Shopee ('Me' -> 'Help Center').",
+    portuguese:
+      'Em divergência de cancelamento, informe o status real do sistema (pago/enviado) e direcione à Shopee. Em pedido Inválido/Não pago, esclareça que a loja não recebeu o pagamento. Em dúvidas de parcelamento, Airpay ou cobranças, nunca confirme valores — direcione à "Central de Ajuda" da Shopee.',
+    isPrimary: false,
+    sortOrder: 17,
   },
 ];

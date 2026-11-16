@@ -18,12 +18,16 @@ import {
   ScriptScenario,
   StoreRuleEntry,
   ToneOption,
+  UsageTrackEventPayload,
 } from "../types/cs";
 import { copyToClipboard, formatRowsAsMarkdownTable } from "../utils/clipboard";
 import {
   detectDefaultPathForScenario,
+  isGenericExpressCarrier,
   parseShopeeOrderPaste,
+  resolveCourierFromTracking,
 } from "../utils/shopeeParser";
+import { VisualGuideStrip } from "./VisualGuideStrip";
 
 interface ReplyGeneratorProps {
   scenarios: ScriptScenario[];
@@ -38,9 +42,11 @@ interface ReplyGeneratorProps {
   onApplyLearnedScripts: (
     updates: LearnedScriptUpdate[]
   ) => Promise<AppliedScriptChange[]>;
+  onTrackUsageEvents?: (events: UsageTrackEventPayload[]) => Promise<void> | void;
   onOpenStoreRules?: () => void;
   onOpenScriptLibrary?: (scenarioId?: string) => void;
   onOpenInChatFlow?: (rawInput: string) => void;
+  onOpenVisualGuides?: () => void;
 }
 
 export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
@@ -52,9 +58,11 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   onClearPrefill,
   onApplyLearnedRules,
   onApplyLearnedScripts,
+  onTrackUsageEvents,
   onOpenStoreRules,
   onOpenScriptLibrary,
   onOpenInChatFlow,
+  onOpenVisualGuides,
 }) => {
   const [input, setInput] = useState("");
   const [carrierName, setCarrierName] = useState("");
@@ -115,6 +123,17 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const displayedPolicySummary =
     activeGeneratedPath?.policySummary ?? reply?.policySummary ?? "";
   const displayedRows = activeGeneratedPath?.rows ?? reply?.rows ?? [];
+  const displayedGuideIds = useMemo(() => {
+    const fromPath = activeGeneratedPath?.suggestedGuideIds;
+    if (Array.isArray(fromPath) && fromPath.length > 0) return fromPath;
+    if (Array.isArray(reply?.suggestedGuideIds) && reply.suggestedGuideIds.length > 0) {
+      return reply.suggestedGuideIds;
+    }
+    if (Array.isArray(activeScenario?.guideIds) && activeScenario.guideIds.length > 0) {
+      return activeScenario.guideIds.slice(0, 3);
+    }
+    return [];
+  }, [activeGeneratedPath, reply, activeScenario]);
   const originalGeneratedPt =
     activeGeneratedPath?.fullPortugueseMessage ??
     reply?.fullPortugueseMessage ??
@@ -167,7 +186,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
       setDetectedVoucherTier("");
     }
 
-    if (parsed.carrierName && (forceOverwrite || !carrierName)) {
+    if (
+      parsed.carrierName &&
+      (forceOverwrite || !carrierName || isGenericExpressCarrier(carrierName))
+    ) {
       setCarrierName(parsed.carrierName);
     }
     if (parsed.trackingNumber && (forceOverwrite || !trackingNumber)) {
@@ -327,16 +349,110 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         setOutputPathId(null);
       }
 
-      const learnedRules = Array.isArray(generated.learnedRuleUpdates)
+      let learnedRules = Array.isArray(generated.learnedRuleUpdates)
         ? generated.learnedRuleUpdates.filter(
             (u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim()
           )
         : [];
-      const learnedScripts = Array.isArray(generated.learnedScriptUpdates)
+      let learnedScripts = Array.isArray(generated.learnedScriptUpdates)
         ? generated.learnedScriptUpdates.filter(
             (u) => u && u.title?.trim() && Array.isArray(u.rows) && u.rows.length > 0
           )
         : [];
+
+      if (autoLearnRules) {
+        const normalizeText = (val: string) =>
+          val
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const detectedNorm = normalizeText(generated.detectedScenario || "");
+        const matchesExistingScenarioTitle =
+          Boolean(detectedNorm) &&
+          scenarios.some((s) => {
+            const titleNorm = normalizeText(s.title);
+            return (
+              titleNorm === detectedNorm ||
+              titleNorm.includes(detectedNorm) ||
+              detectedNorm.includes(titleNorm)
+            );
+          });
+        const hasInstructionOrRuleCue =
+          /\b(rule|store rule|regra|policy|always\s+(?:tell|offer|say|inform|ask|include|send|check|escalat)|never\s+(?:tell|offer|say)|nota:|agent\s*note|instruct|threshold|escalation\s*rule|new\s*scenario)\b/i.test(
+            trimmed
+          ) ||
+          (trimmed.includes("CX>") &&
+            /\n\s*(?:rule|policy|note|agent|regra)\b/i.test(trimmed));
+
+        const needsSecondaryDetection =
+          (learnedScripts.length === 0 || learnedRules.length === 0) &&
+          (!matchesExistingScenarioTitle ||
+            hasInstructionOrRuleCue ||
+            learnedScripts.length > 0 ||
+            learnedRules.length > 0);
+
+        if (needsSecondaryDetection) {
+          try {
+            const learnRes = await fetch("/api/learn-rule", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rawInput: trimmed,
+                originalPortuguese: generated.fullPortugueseMessage,
+                detectedScenario: generated.detectedScenario || activeScenario?.title,
+                customStoreRules: storeRules?.map((r) => ({
+                  id: r.id,
+                  topic: r.topic,
+                  english: r.english,
+                  portuguese: r.portuguese,
+                  isPrimary: r.isPrimary,
+                })),
+                existingScenarios: scenarios.map((s) => ({
+                  id: s.id,
+                  title: s.title,
+                  category: s.category,
+                  whenToUse: s.whenToUse,
+                  policyRule: s.policyRule,
+                })),
+              }),
+            });
+            if (learnRes.ok) {
+              const learnData = await learnRes.json();
+              const extraScripts = Array.isArray(learnData?.learnedScriptUpdates)
+                ? (learnData.learnedScriptUpdates as LearnedScriptUpdate[]).filter(
+                    (u) => u && u.title?.trim() && Array.isArray(u.rows) && u.rows.length > 0
+                  )
+                : [];
+              const extraRules = Array.isArray(learnData?.learnedRuleUpdates)
+                ? (learnData.learnedRuleUpdates as LearnedRuleUpdate[]).filter(
+                    (u) => u && u.topic?.trim() && u.english?.trim() && u.portuguese?.trim()
+                  )
+                : [];
+
+              for (const extra of extraScripts) {
+                const key = extra.existingScenarioId || normalizeText(extra.title);
+                const exists = learnedScripts.some(
+                  (s) => (s.existingScenarioId || normalizeText(s.title)) === key
+                );
+                if (!exists) learnedScripts = [...learnedScripts, extra];
+              }
+              for (const extra of extraRules) {
+                const key = extra.existingRuleId || normalizeText(extra.topic);
+                const exists = learnedRules.some(
+                  (r) => (r.existingRuleId || normalizeText(r.topic)) === key
+                );
+                if (!exists) learnedRules = [...learnedRules, extra];
+              }
+            }
+          } catch {
+            // Keep generated reply intact even if background knowledge pass fails
+          }
+        }
+      }
+
+      let syncedScripts: AppliedScriptChange[] = [];
+      let syncedRules: AppliedRuleChange[] = [];
 
       if (autoLearnRules && (learnedRules.length > 0 || learnedScripts.length > 0)) {
         if (isSignedIn) {
@@ -348,11 +464,131 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               ? onApplyLearnedRules(learnedRules)
               : Promise.resolve([]),
           ]);
+          syncedScripts = appliedScripts;
+          syncedRules = appliedRules;
           setAppliedScriptChanges(appliedScripts);
           setAppliedRuleChanges(appliedRules);
         } else {
           setPendingLearnedScripts(learnedScripts);
           setPendingLearnedUpdates(learnedRules);
+        }
+      }
+
+      if (onTrackUsageEvents) {
+        const eventsToTrack: UsageTrackEventPayload[] = [];
+        const trackedScriptIds = new Set<string>();
+        const parsedInput = parseShopeeOrderPaste(trimmed);
+        const norm = (v: string) =>
+          v
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const detectedNorm = norm(generated.detectedScenario || "");
+
+        const matchedScript =
+          (generated.matchedScenarioId
+            ? scenarios.find((s) => s.id === generated.matchedScenarioId)
+            : undefined) ??
+          activeScenario ??
+          (parsedInput.matchedScenarioId
+            ? scenarios.find((s) => s.id === parsedInput.matchedScenarioId)
+            : undefined) ??
+          (detectedNorm
+            ? scenarios.find((s) => {
+                const tNorm = norm(s.title);
+                return (
+                  tNorm === detectedNorm ||
+                  tNorm.includes(detectedNorm) ||
+                  detectedNorm.includes(tNorm)
+                );
+              })
+            : undefined);
+
+        if (matchedScript) {
+          trackedScriptIds.add(matchedScript.id);
+          eventsToTrack.push({
+            itemType: "script",
+            itemId: matchedScript.id,
+            itemTitle: matchedScript.title,
+            category: matchedScript.category,
+            event: "applied",
+          });
+        }
+
+        for (const changedScript of syncedScripts) {
+          if (!trackedScriptIds.has(changedScript.scenarioId)) {
+            trackedScriptIds.add(changedScript.scenarioId);
+            const existing = scenarios.find(
+              (s) => s.id === changedScript.scenarioId
+            );
+            eventsToTrack.push({
+              itemType: "script",
+              itemId: changedScript.scenarioId,
+              itemTitle: changedScript.title,
+              category: existing?.category || generated.category || "General",
+              event: "applied",
+            });
+          }
+        }
+
+        const trackedRuleIds = new Set<string>();
+        const rulesList = storeRules ?? [];
+
+        const pushRuleById = (ruleId: string) => {
+          if (!ruleId || trackedRuleIds.has(ruleId)) return;
+          const ruleObj = rulesList.find((r) => r.id === ruleId);
+          if (!ruleObj) return;
+          trackedRuleIds.add(ruleObj.id);
+          eventsToTrack.push({
+            itemType: "rule",
+            itemId: ruleObj.id,
+            itemTitle: ruleObj.topic,
+            category: ruleObj.isPrimary ? "Primary Rule" : "Policy Rule",
+            event: "applied",
+          });
+        };
+
+        if (Array.isArray(generated.appliedRuleIds)) {
+          for (const rawId of generated.appliedRuleIds) {
+            if (typeof rawId === "string") pushRuleById(rawId.trim());
+          }
+        }
+
+        const resolvedCourier =
+          carrierName.trim() || parsedInput.carrierName || "";
+        if (
+          ["SPX", "Anjun Express", "Correios"].includes(resolvedCourier) &&
+          rulesList.some((r) => r.id === "default-13")
+        ) {
+          pushRuleById("default-13");
+        }
+
+        if (
+          generated.rows?.some((r) =>
+            /assuran|garantia|empath/i.test(`${r.section} ${r.english}`)
+          ) &&
+          rulesList.some((r) => r.id === "default-11")
+        ) {
+          pushRuleById("default-11");
+        }
+
+        for (const changedRule of syncedRules) {
+          if (!trackedRuleIds.has(changedRule.ruleId)) {
+            trackedRuleIds.add(changedRule.ruleId);
+            const existing = rulesList.find((r) => r.id === changedRule.ruleId);
+            eventsToTrack.push({
+              itemType: "rule",
+              itemId: changedRule.ruleId,
+              itemTitle: changedRule.topic,
+              category: existing?.isPrimary ? "Primary Rule" : "Policy Rule",
+              event: "applied",
+            });
+          }
+        }
+
+        if (eventsToTrack.length > 0) {
+          void onTrackUsageEvents(eventsToTrack);
         }
       }
     } catch (err: unknown) {
@@ -522,20 +758,20 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   return (
     <div className="space-y-6">
       {/* Input Form Panel */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Shopee Brazil Reply Generator
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Paste <span className="font-mono text-xs text-slate-700">Order / Product Info &gt; CX Concern</span> to generate a sentence-by-sentence English and Portuguese response across all CX Response Paths.
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              Paste <span className="font-mono text-xs text-slate-700 dark:text-slate-300">Order / Product Info &gt; CX Concern</span> to generate a sentence-by-sentence English and Portuguese response across all CX Response Paths.
             </p>
           </div>
           <button
             type="button"
             onClick={handleReset}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Clear Form
@@ -544,7 +780,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
         {/* Quick Sample Loaders */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-500 mr-1">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
             Load example:
           </span>
           {quickPresets.map((preset) => (
@@ -563,8 +799,17 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 setManualScenarioLock(false);
                 applyInputWithAutoParse(preset.sampleInput, true, preset.id);
                 setError(null);
+                onTrackUsageEvents?.([
+                  {
+                    itemType: "script",
+                    itemId: preset.id,
+                    itemTitle: preset.title,
+                    category: preset.category,
+                    event: "accessed",
+                  },
+                ]);
               }}
-              className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-md hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {preset.number}. {preset.title}
             </button>
@@ -576,7 +821,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <label
                 htmlFor="cx-concern-input"
-                className="block text-xs font-medium text-slate-700"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300"
               >
                 Order / Product Info &gt; Customer Concern (supports full Shopee Seller Center paste)
               </label>
@@ -585,7 +830,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 trackingNumber ||
                 detectedAmount ||
                 detectedVoucherTier) && (
-                <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
                   {[
                     detectedOrderSn ? `Order ${detectedOrderSn}` : null,
                     detectedAmount
@@ -614,17 +859,17 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 }
               }}
               placeholder="Paste the Shopee Seller Center order + tracking log followed by CX> concern (e.g., CX> when does it arrives?) and any agent notes..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/70 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
             />
           </div>
 
           {/* Interactive CX Response Path Selector */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <label
                   htmlFor="generator-path-scenario"
-                  className="text-xs font-semibold text-slate-700 whitespace-nowrap"
+                  className="text-xs font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap"
                 >
                   CX Response Path:
                 </label>
@@ -643,11 +888,22 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                           sc?.paths?.[0]?.id ??
                           null
                       );
+                      if (sc) {
+                        onTrackUsageEvents?.([
+                          {
+                            itemType: "script",
+                            itemId: sc.id,
+                            itemTitle: sc.title,
+                            category: sc.category,
+                            event: "accessed",
+                          },
+                        ]);
+                      }
                     } else {
                       setActivePathId(null);
                     }
                   }}
-                  className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 focus:border-[#EE4D2D] focus:outline-none"
+                  className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-[#EE4D2D] focus:outline-none"
                 >
                   <option value="">Auto-detect from customer concern</option>
                   {branchingScenarios.map((s) => (
@@ -671,7 +927,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                       setActiveScenarioId(null);
                       setActivePathId(null);
                     }}
-                    className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
                   >
                     Clear path
                   </button>
@@ -700,7 +956,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                         className={
                           isActive
                             ? "px-3 py-1.5 text-xs font-medium rounded-lg border border-[#EE4D2D] bg-[#EE4D2D] text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                            : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                            : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                         }
                       >
                         {path.label}
@@ -709,8 +965,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                   })}
                 </div>
                 {activePath?.cxTrigger && (
-                  <p className="text-xs text-slate-500">
-                    <span className="font-medium text-slate-700">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">
                       Primary focus stage:{" "}
                     </span>
                     {activePath.cxTrigger}
@@ -718,7 +974,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 )}
               </>
             ) : (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Paste any order + CX concern or pick a scenario above to generate tailored replies across every CX Response Path.
               </p>
             )}
@@ -729,7 +985,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             <div>
               <label
                 htmlFor="last-update-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 Last Update [DATE]
               </label>
@@ -739,14 +995,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={lastUpdateDate}
                 onChange={(e) => setLastUpdateDate(e.target.value)}
                 placeholder="03/11/2026"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="est-date-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 Est. Delivery [DATE]
               </label>
@@ -756,14 +1012,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={estimatedDate}
                 onChange={(e) => setEstimatedDate(e.target.value)}
                 placeholder="24/11/2026"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="tracking-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 [TRACKING]
               </label>
@@ -771,16 +1027,28 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 id="tracking-input"
                 type="text"
                 value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
+                onChange={(e) => {
+                  const nextTracking = e.target.value;
+                  setTrackingNumber(nextTracking);
+                  const autoCouriers = ["SPX", "Anjun Express", "Correios"];
+                  if (
+                    !carrierName.trim() ||
+                    isGenericExpressCarrier(carrierName) ||
+                    autoCouriers.includes(carrierName.trim())
+                  ) {
+                    const resolved = resolveCourierFromTracking(nextTracking);
+                    if (resolved) setCarrierName(resolved);
+                  }
+                }}
                 placeholder="AJ261009127752101"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="status-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 [STATUS]
               </label>
@@ -790,14 +1058,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={latestStatus}
                 onChange={(e) => setLatestStatus(e.target.value)}
                 placeholder="em trânsito"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="carrier-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 Assigned Courier
               </label>
@@ -806,15 +1074,15 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 type="text"
                 value={carrierName}
                 onChange={(e) => setCarrierName(e.target.value)}
-                placeholder="Expresso padrão"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                placeholder="SPX / Anjun Express / Correios"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="topic-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 [ISSUE TOPIC]
               </label>
@@ -824,14 +1092,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={issueTopic}
                 onChange={(e) => setIssueTopic(e.target.value)}
                 placeholder="Shopee Coins / Pix"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="voucher-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 [VOUCHER] (≤ R$25 tier)
               </label>
@@ -841,14 +1109,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={detectedVoucherTier}
                 onChange={(e) => setDetectedVoucherTier(e.target.value)}
                 placeholder="R$15"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="spec-input"
-                className="block text-[11px] font-medium text-slate-500 mb-1"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
               >
                 [INSERT SPEC]
               </label>
@@ -858,25 +1126,25 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 value={productSpec}
                 onChange={(e) => setProductSpec(e.target.value)}
                 placeholder="Bivolt 110V/220V"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#EE4D2D] focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/70 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none"
               />
             </div>
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-800">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-red-200 dark:border-red-900/70 bg-red-50 dark:bg-red-950/50 px-3.5 py-2.5 text-xs text-red-800 dark:text-red-300">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
-            <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={autoLearnRules}
                 onChange={(e) => setAutoLearnRules(e.target.checked)}
-                className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
+                className="rounded border-slate-300 dark:border-slate-600 text-[#EE4D2D] focus:ring-[#EE4D2D]"
               />
               Auto-detect new scenarios &amp; rules (saves generalized spiels to Script Library &amp; Store Rules)
             </label>
@@ -884,7 +1152,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="tone-select"
-                  className="text-xs font-medium text-slate-600 whitespace-nowrap"
+                  className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap"
                 >
                   Tone:
                 </label>
@@ -892,7 +1160,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                   id="tone-select"
                   value={tone}
                   onChange={(e) => setTone(e.target.value as ToneOption)}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
                 >
                   <option value={ToneOption.STANDARD}>Standard Polite</option>
                   <option value={ToneOption.EMPATHETIC}>Extra Empathetic</option>
@@ -903,7 +1171,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 type="button"
                 disabled={isDetectingKnowledge || isLoading}
                 onClick={() => void handleManualDetectScenarioAndRule()}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-[#EE4D2D] hover:text-[#EE4D2D] disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 {isDetectingKnowledge
@@ -935,10 +1203,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         learnNotice) && (
         <section className="space-y-3">
           {(appliedScriptChanges.length > 0 || appliedRuleChanges.length > 0) && (
-            <div className="rounded-xl px-5 py-4 bg-emerald-50/80 border border-emerald-200 space-y-2.5">
+            <div className="rounded-xl px-5 py-4 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                   Synced to Cloud Script Library &amp; Store Rules (
                   {appliedScriptChanges.length + appliedRuleChanges.length})
                 </div>
@@ -951,7 +1219,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                           appliedScriptChanges[appliedScriptChanges.length - 1]?.scenarioId
                         )
                       }
-                      className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
+                      className="text-xs font-medium text-emerald-800 dark:text-emerald-300 hover:underline cursor-pointer"
                     >
                       View in Script Library →
                     </button>
@@ -960,14 +1228,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                     <button
                       type="button"
                       onClick={onOpenStoreRules}
-                      className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer"
+                      className="text-xs font-medium text-emerald-800 dark:text-emerald-300 hover:underline cursor-pointer"
                     >
                       View in Store Rules →
                     </button>
                   )}
                 </div>
               </div>
-              <ul className="space-y-1 text-xs text-emerald-900">
+              <ul className="space-y-1 text-xs text-emerald-900 dark:text-emerald-200">
                 {appliedScriptChanges.map((change, idx) => (
                   <li key={`script-${change.scenarioId}-${idx}`}>
                     <span className="font-semibold uppercase text-[11px] mr-1.5">
@@ -993,8 +1261,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           {!isSignedIn &&
             (pendingLearnedScripts.length > 0 ||
               pendingLearnedUpdates.length > 0) && (
-              <div className="rounded-xl px-5 py-3.5 bg-orange-50/80 border border-orange-200 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-800">
+              <div className="rounded-xl px-5 py-3.5 bg-orange-50/80 dark:bg-[#EE4D2D]/15 border border-orange-200 dark:border-[#EE4D2D]/40 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-800 dark:text-slate-200">
                   Detected{" "}
                   {pendingLearnedScripts.length > 0 && (
                     <>
@@ -1024,7 +1292,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             )}
 
           {learnNotice && (
-            <div className="rounded-xl px-4 py-3 bg-slate-100 border border-slate-200 text-xs text-slate-700">
+            <div className="rounded-xl px-4 py-3 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300">
               {learnNotice}
             </div>
           )}
@@ -1033,17 +1301,17 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
       {/* Loading Skeleton */}
       {isLoading && (
-        <section className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-            <div className="h-5 w-56 bg-slate-100 rounded animate-pulse" />
-            <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="h-5 w-56 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
           </div>
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((n) => (
               <div key={n} className="grid grid-cols-12 gap-4 py-2">
-                <div className="col-span-2 h-4 bg-slate-100 rounded animate-pulse" />
-                <div className="col-span-5 h-4 bg-slate-100 rounded animate-pulse" />
-                <div className="col-span-5 h-4 bg-slate-100 rounded animate-pulse" />
+                <div className="col-span-2 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                <div className="col-span-5 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                <div className="col-span-5 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
               </div>
             ))}
           </div>
@@ -1052,11 +1320,11 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
       {/* Empty State */}
       {!isLoading && !reply && (
-        <section className="bg-white border border-slate-200 rounded-xl p-8 text-center">
-          <p className="text-sm font-medium text-slate-900">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
             Ready for your next customer message
           </p>
-          <p className="text-xs text-slate-500 mt-1.5 max-w-lg mx-auto leading-relaxed">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-lg mx-auto leading-relaxed">
             Paste any order details and customer concern above, or pick an example scenario to test. You will get a sentence-by-sentence English and Portuguese table across every CX Response Path plus a ready-to-paste Shopee Chat reply.
           </p>
         </section>
@@ -1064,26 +1332,26 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
       {/* Generated Output Panel */}
       {!isLoading && reply && (
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-5 sm:px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="font-medium text-slate-700">{reply.category}</span>
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium text-slate-700 dark:text-slate-300">{reply.category}</span>
                 <span aria-hidden="true">·</span>
                 <span>{reply.detectedScenario}</span>
               </div>
-              <p className="text-sm text-slate-700 mt-1">{displayedPolicySummary}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 mt-1">{displayedPolicySummary}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleCopyMarkdownTable}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {copiedId === "md-table" ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     Copied Table
                   </>
                 ) : (
@@ -1098,7 +1366,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenInChatFlow(input)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   Continue in Chat Flow
@@ -1127,9 +1395,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
 
           {/* Generated CX Response Path Switcher */}
           {reply.pathReplies && reply.pathReplies.length > 0 && (
-            <div className="px-5 sm:px-6 py-3 bg-slate-50/90 border-b border-slate-200 space-y-2">
+            <div className="px-5 sm:px-6 py-3 bg-slate-50/90 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-slate-700 mr-1 whitespace-nowrap">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 mr-1 whitespace-nowrap">
                   Generated CX Response Path:
                 </span>
                 {reply.pathReplies.map((pathItem) => {
@@ -1151,7 +1419,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                       className={
                         isActive
                           ? "px-3 py-1.5 text-xs font-medium rounded-lg border border-[#EE4D2D] bg-[#EE4D2D] text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                          : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                          : "px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                       }
                     >
                       {pathItem.pathLabel}
@@ -1160,8 +1428,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 })}
               </div>
               {activeGeneratedPath?.cxTrigger && (
-                <p className="text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
                     When CX responds:{" "}
                   </span>
                   {activeGeneratedPath.cxTrigger}
@@ -1174,24 +1442,24 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                <tr className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <th className="py-3 px-4 w-40">Section</th>
                   <th className="py-3 px-4 w-[38%]">English (for you)</th>
                   <th className="py-3 px-4 w-[42%]">Portuguese (send to CX)</th>
                   <th className="py-3 px-4 w-20 text-right">Copy</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
                 {displayedRows.map((row, idx) => (
                   <tr
                     key={`${activeGeneratedPath?.pathId ?? "main"}-${row.section}-${idx}`}
                     className={
                       row.isKeyRule
-                        ? "bg-orange-50/55 hover:bg-orange-50/80 transition-colors"
-                        : "hover:bg-slate-50/80 transition-colors"
+                        ? "bg-orange-50/55 dark:bg-[#EE4D2D]/12 hover:bg-orange-50/80 dark:hover:bg-[#EE4D2D]/20 transition-colors"
+                        : "hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
                     }
                   >
-                    <td className="py-3.5 px-4 align-top font-medium text-slate-900 text-xs">
+                    <td className="py-3.5 px-4 align-top font-medium text-slate-900 dark:text-slate-100 text-xs">
                       <div>{row.section}</div>
                       {row.isKeyRule && (
                         <div className="text-[11px] font-semibold text-[#EE4D2D] mt-0.5">
@@ -1199,10 +1467,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 align-top text-slate-600 leading-relaxed">
+                    <td className="py-3.5 px-4 align-top text-slate-600 dark:text-slate-400 leading-relaxed">
                       {row.english}
                     </td>
-                    <td className="py-3.5 px-4 align-top text-slate-900 leading-relaxed">
+                    <td className="py-3.5 px-4 align-top text-slate-900 dark:text-slate-100 leading-relaxed">
                       {row.portuguese}
                     </td>
                     <td className="py-3.5 px-4 align-top text-right">
@@ -1210,10 +1478,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                         type="button"
                         onClick={() => void handleCopyRow(idx, row.portuguese)}
                         title="Copy Portuguese sentence"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         {copiedId === `row-${idx}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
@@ -1226,11 +1494,11 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           </div>
 
           {/* Editable Full Portuguese Message Preview + Learn from Edit */}
-          <div className="p-5 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-2.5">
+          <div className="p-5 sm:p-6 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label
                 htmlFor="full-pt-preview"
-                className="text-xs font-semibold text-slate-700"
+                className="text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Ready-to-Send Portuguese Message (editable before copying)
               </label>
@@ -1240,7 +1508,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                     type="button"
                     disabled={isDetectingKnowledge}
                     onClick={() => void handleManualDetectScenarioAndRule()}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white border border-[#EE4D2D]/40 rounded-md hover:bg-orange-50 disabled:opacity-60 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white dark:bg-slate-900 border border-[#EE4D2D]/40 rounded-md hover:bg-orange-50 dark:hover:bg-[#EE4D2D]/15 disabled:opacity-60 transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     {isDetectingKnowledge
@@ -1248,7 +1516,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                       : "Learn Scenario & Rule from Edit"}
                   </button>
                 )}
-                <span className="text-xs text-slate-500 tabular-nums">
+                <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                   {displayedEditablePt.length} chars
                 </span>
               </div>
@@ -1258,9 +1526,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               rows={5}
               value={displayedEditablePt}
               onChange={(e) => updateDisplayedEditablePt(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 leading-relaxed focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
             />
           </div>
+
+          <VisualGuideStrip
+            guideIds={displayedGuideIds}
+            onBrowseAll={onOpenVisualGuides}
+          />
         </section>
       )}
     </div>

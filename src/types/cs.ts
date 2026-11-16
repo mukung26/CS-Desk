@@ -39,6 +39,7 @@ export interface ScriptScenario {
   sampleInput: string;
   rows: ScriptRow[];
   paths?: ScriptPath[];
+  guideIds?: string[];
   isCustom?: boolean;
 }
 
@@ -57,6 +58,7 @@ export interface GeneratedPathReply {
   rows: GeneratedRow[];
   fullEnglishMessage: string;
   fullPortugueseMessage: string;
+  suggestedGuideIds?: string[];
 }
 
 export interface LearnedRuleUpdate {
@@ -85,6 +87,7 @@ export interface LearnedScriptUpdate {
   policyRule: string;
   sampleInput: string;
   rows: ScriptRow[];
+  guideIds?: string[];
   reason: string;
 }
 
@@ -97,11 +100,14 @@ export interface AppliedScriptChange {
 
 export interface GeneratedReply {
   detectedScenario: string;
+  matchedScenarioId?: string;
   category: string;
   policySummary: string;
   rows: GeneratedRow[];
   fullEnglishMessage: string;
   fullPortugueseMessage: string;
+  suggestedGuideIds?: string[];
+  appliedRuleIds?: string[];
   pathReplies?: GeneratedPathReply[];
   learnedRuleUpdates?: LearnedRuleUpdate[];
   learnedScriptUpdates?: LearnedScriptUpdate[];
@@ -134,6 +140,7 @@ export interface ChatFlowTurn {
   nextChoices: ChatFlowChoice[];
   fullEnglishMessage: string;
   fullPortugueseMessage: string;
+  suggestedGuideIds?: string[];
   editedPortuguese?: string;
 }
 
@@ -162,4 +169,28 @@ export interface StoreRuleEntry {
   portuguese: string;
   isPrimary: boolean;
   sortOrder: number;
+}
+
+export type UsageStatItemType = "script" | "rule";
+export type UsageStatEventType = "applied" | "accessed";
+
+export interface UsageStatEntry {
+  id: string;
+  itemType: UsageStatItemType;
+  itemId: string;
+  itemTitle: string;
+  category: string;
+  appliedCount: number;
+  accessedCount: number;
+  lastEvent: UsageStatEventType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UsageTrackEventPayload {
+  itemType: UsageStatItemType;
+  itemId: string;
+  itemTitle: string;
+  category: string;
+  event: UsageStatEventType;
 }

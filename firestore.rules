@@ -48,6 +48,7 @@ service cloud.firestore {
           'sampleInput',
           'rows',
           'paths',
+          'guideIds',
           'sortOrder',
           'isCustom',
           'createdAt',
@@ -71,6 +72,7 @@ service cloud.firestore {
         && data.rows.size() <= 30
         && data.rows[0] is map
         && (!('paths' in data) || (data.paths is list && data.paths.size() <= 10 && (data.paths.size() == 0 || data.paths[0] is map)))
+        && (!('guideIds' in data) || (data.guideIds is list && data.guideIds.size() <= 6 && (data.guideIds.size() == 0 || (data.guideIds[0] is string && data.guideIds[0].size() <= 80))))
         && (!('sortOrder' in data) || (data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000))
         && (!('isCustom' in data) || data.isCustom is bool)
         && data.createdAt is timestamp
@@ -198,6 +200,52 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidUsageStat(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'itemType',
+          'itemId',
+          'itemTitle',
+          'category',
+          'appliedCount',
+          'accessedCount',
+          'lastEvent',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'itemType',
+          'itemId',
+          'itemTitle',
+          'category',
+          'appliedCount',
+          'accessedCount',
+          'lastEvent',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && isValidId(data.ownerId)
+        && data.itemType in ['script', 'rule']
+        && isValidId(data.itemId)
+        && data.itemTitle is string
+        && data.itemTitle.size() >= 1
+        && data.itemTitle.size() <= 200
+        && data.category is string
+        && data.category.size() <= 80
+        && data.appliedCount is int
+        && data.appliedCount >= 0
+        && data.appliedCount <= 1000000
+        && data.accessedCount is int
+        && data.accessedCount >= 0
+        && data.accessedCount <= 1000000
+        && data.lastEvent in ['applied', 'accessed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     match /users/{userId} {
       allow get: if isOwner(userId) && isValidId(userId);
       allow create: if isOwner(userId)
@@ -240,6 +288,7 @@ service cloud.firestore {
             'sampleInput',
             'rows',
             'paths',
+            'guideIds',
             'sortOrder',
             'isCustom',
             'updatedAt'
@@ -302,6 +351,33 @@ service cloud.firestore {
             'updatedAt'
           ]);
         allow delete: if isOwner(userId) && isValidId(flowId);
+      }
+
+      match /usageStats/{statId} {
+        allow get: if isOwner(userId) && isValidId(statId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(statId)
+          && isValidUsageStat(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(statId)
+          && isValidUsageStat(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().itemType == existing().itemType
+          && incoming().itemId == existing().itemId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'itemTitle',
+            'category',
+            'appliedCount',
+            'accessedCount',
+            'lastEvent',
+            'updatedAt'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(statId);
       }
     }
   }

@@ -1,3 +1,10 @@
+import {
+  isGenericExpressCarrier,
+  resolveCourierFromTracking,
+} from "../../shared/csPromptEngine";
+
+export { isGenericExpressCarrier, resolveCourierFromTracking };
+
 export interface ParsedShopeeOrder {
   orderSn?: string;
   trackingNumber?: string;
@@ -48,9 +55,58 @@ function extractValueAfterLabel(lines: string[], labelRegex: RegExp): string | u
   return undefined;
 }
 
-function detectScenarioId(rawText: string, cxConcern?: string): string | undefined {
+function parseBrDateToIso(brDate?: string): string | null {
+  if (!brDate) return null;
+  const match = brDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function detectScenarioId(
+  rawText: string,
+  cxConcern?: string,
+  estimatedDate?: string,
+  lastUpdateDate?: string
+): string | undefined {
   const concernText = (cxConcern || rawText).toLowerCase();
   const fullLower = rawText.toLowerCase();
+
+  // Playbook Flow 18: Threats, Procon, Reclame Aqui, Lawyer, Report
+  if (
+    /procon|reclame\s*aqui|advogad|lawyer|processar|\bsue\b|report\s*page|denunciar|pol[ií]cia/i.test(
+      concernText
+    )
+  ) {
+    return "s23";
+  }
+
+  // Playbook Flow 12: Invalid / Unpaid Order Refund Question
+  if (
+    (/\binvalid\b|inv[aá]lido/i.test(fullLower) ||
+      /invalid|inv[aá]lido/i.test(concernText)) &&
+    /refund|reembolso|dinheiro/i.test(concernText)
+  ) {
+    return "s19";
+  }
+
+  // Playbook Flow 11: "Order was canceled but no refund" discrepancy (while paid & shipped)
+  if (
+    /(?:cancel|cancelad[oa]).*(?:no\s*refund|sem\s*reembolso|n[aã]o\s*(?:recebi|veio)\s*(?:o\s*)?reembolso)/i.test(
+      concernText
+    ) &&
+    !/\binvalid\b/i.test(fullLower)
+  ) {
+    return "s18";
+  }
+
+  // Playbook Flow 21: Payment / Installment Inquiry (Airpay, Credit Card, duplicate charge)
+  if (
+    /airpay|parcela|parcelamento|installment|credit\s*card|cart[aã]o\s*de\s*cr[eé]dito|duplicad|cobran[cç]a\s*indevida/i.test(
+      concernText
+    )
+  ) {
+    return "s24";
+  }
 
   // Check explicit CX concern first, then full paste context
   if (/already\s*received|já\s*recebi|tracking\s*not\s*updated|rastreio\s*não\s*atualiz/i.test(concernText)) {
@@ -121,9 +177,37 @@ function detectScenarioId(rawText: string, cxConcern?: string): string | undefin
   if (/expedite|rush|urgent|prioritize|agilizar|acelerar|urgente|prioridade|o mais rápido/i.test(concernText)) {
     return "s14";
   }
+
+  // Playbook Flow 05: Arrived in Brazil with no updates
+  if (/chegou\s*(?:no|ao)\s*brasil|arrived\s*in\s*brazil/i.test(fullLower) && !/liberado\s*na\s*alfândega/i.test(fullLower)) {
+    return "s17";
+  }
+
+  // Playbook Flow 17: Past EDD, yet tracking updated today
+  const estIso = parseBrDateToIso(estimatedDate);
+  const lastIso = parseBrDateToIso(lastUpdateDate);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (
+    (estIso && estIso < todayIso && ((lastIso && lastIso === todayIso) || /updated\s*today|atualiza[çc][aã]o\s*hoje|\btoday\b/i.test(fullLower))) ||
+    (/past\s*(?:the\s*)?edd|passou\s*(?:da\s*)?data/i.test(concernText) && /updated\s*today|atualiz.*hoje/i.test(fullLower))
+  ) {
+    return "s22";
+  }
+
   if (/alfândega|customs/i.test(concernText) || (/inspeção\s*na\s*alfândega/i.test(fullLower) && !/liberado\s*na\s*alfândega/i.test(fullLower))) {
     return "s3";
   }
+
+  // Playbook Flow 16: Order Just Paid — Early Stage Positive Reassurance
+  if (/hope\s*it\s*arrives\s*soon|espero\s*que\s*chegue\s*logo|just\s*paid|acabei\s*de\s*pagar/i.test(concernText)) {
+    return "s21";
+  }
+
+  // Playbook Flow 15: "Will it be delivered?" confirmation
+  if (/will\s*(?:it|my\s*order)\s*(?:still\s*)?be\s*delivered|vai\s*(?:mesmo\s*)?ser\s*entregue|chegar\s*mesmo/i.test(concernText)) {
+    return "s20";
+  }
+
   if (/when\s*does\s*it\s*arrive|where\s*is\s*my\s*order|cadê|quando\s*chega|prazo|imprevisto|trânsito/i.test(concernText)) {
     return "s4";
   }
@@ -148,8 +232,16 @@ export function parseShopeeOrderPaste(rawText: string): ParsedShopeeOrder {
   }
 
   const carrier = extractValueAfterLabel(lines, /Shipping\s*Carrier\s*Name/i);
-  if (carrier && !/Integrated|Shipping\s*Logistics/i.test(carrier)) {
-    result.carrierName = carrier;
+  const rawCarrier =
+    carrier && !/Integrated|Shipping\s*Logistics/i.test(carrier)
+      ? carrier
+      : undefined;
+  const resolvedCarrier = resolveCourierFromTracking(
+    result.trackingNumber,
+    rawCarrier
+  );
+  if (resolvedCarrier) {
+    result.carrierName = resolvedCarrier;
   }
 
   const estRaw = extractValueAfterLabel(lines, /Estimated\s*Delivery\s*Time/i);
@@ -184,7 +276,12 @@ export function parseShopeeOrderPaste(rawText: string): ParsedShopeeOrder {
     result.cxConcern = cxMatch[1].trim();
   }
 
-  result.matchedScenarioId = detectScenarioId(rawText, result.cxConcern);
+  result.matchedScenarioId = detectScenarioId(
+    rawText,
+    result.cxConcern,
+    result.estimatedDate,
+    result.lastUpdateDate
+  );
 
   return result;
 }
@@ -234,10 +331,29 @@ export function detectDefaultPathForScenario(
       : "initial";
   }
 
+  if (scenarioId === "s14") {
+    if (/order_created|to_ship|being\s*prepared|in\s*preparation|em\s*prepara[çc][aã]o|just\s*placed/i.test(lower)) {
+      return "in-preparation-urgent";
+    }
+    return /trip|event|specific\s*date|prazo\s*espec[ií]fico/i.test(lower)
+      ? "specific-deadline"
+      : "initial";
+  }
+
   if (scenarioId === "s16") {
     return /(?:>|over|more\s*than|mais\s*de|passou\s*de)\s*24\s*h/i.test(lower)
       ? "over-24h"
       : "initial";
+  }
+
+  if (scenarioId === "s23") {
+    return /refund|reembolso|dinheiro\s*de\s*volta|money\s*back/i.test(lower)
+      ? "demands-refund"
+      : "initial";
+  }
+
+  if (["s17", "s18", "s19", "s20", "s21", "s22", "s24"].includes(scenarioId)) {
+    return "initial";
   }
 
   if (scenarioId === "s6") {
