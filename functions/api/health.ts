@@ -1,11 +1,21 @@
+import { getProviderConfigs } from "../_shared/aiEdge.ts";
 import { jsonResponse, type PagesContext } from "../_shared/types.ts";
 
 export async function onRequestGet(context: PagesContext): Promise<Response> {
+  const cfg = getProviderConfigs(context.env);
   return jsonResponse({
     status: "ok",
     runtime: "cloudflare-pages",
-    model: context.env.GEMINI_MODEL?.trim() || "gemini-4-hydrogen",
-    hasApiKey: Boolean(context.env.GEMINI_API_KEY),
+    providers: {
+      gemini: cfg.gemini.configured,
+      groq: cfg.groq.configured,
+      openrouter: cfg.openrouter.configured,
+    },
+    models: {
+      gemini: cfg.gemini.model,
+      groq: cfg.groq.model,
+      openrouter: cfg.openrouter.model,
+    },
     timestamp: new Date().toISOString(),
   });
 }

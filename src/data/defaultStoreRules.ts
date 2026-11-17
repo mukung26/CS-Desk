@@ -25,9 +25,9 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
     id: "default-3",
     topic: "Delivery Time Inquiry & Expedite Order",
     english:
-      "Format dates in Brazilian DD/MM/YYYY, share latest tracking status, resolved courier, and Est. Delivery. Reassure CX ('no worries') that the date is only an estimate—international orders usually arrive within 5–14 days. Always include courier follow-up ('we follow up this to courier' / 'we expedite follow your order to courier') and Shopee Guarantee assurance.",
+      "Format dates in DD/MM/YYYY, share latest status, resolved courier, and Est. Delivery. IF within the 5–14 days schedule/EDD, reassure CX ('no worries') that the date is only an estimate (international orders usually arrive in 5–14 days). ELSE (past EDD or >14 days), do NOT mention 5–14 days—lead with Empathy and assure courier follow-up ('we follow up this to courier' / 'we expedite follow your order to courier') + Shopee Guarantee.",
     portuguese:
-      'Use datas em DD/MM/AAAA e informe status, transportadora e previsão. Tranquilize o cliente que essa data é apenas uma estimativa (pedidos internacionais costumam chegar em apenas 5 a 14 dias). Sempre inclua "nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora", além da Garantia Shopee.',
+      'Use DD/MM/AAAA e informe status, transportadora e previsão. SE dentro do prazo de 5 a 14 dias/estimativa, tranquilize que é apenas uma estimativa (5 a 14 dias). SENÃO (após o prazo), NÃO cite 5 a 14 dias — comece com empatia e garanta acompanhamento junto à transportadora ("nós acompanhamos isso junto à transportadora" e "aceleramos o acompanhamento do seu pedido junto à transportadora") + Garantia Shopee.',
     isPrimary: false,
     sortOrder: 2,
   },
@@ -105,9 +105,9 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
     id: "default-11",
     topic: "Mandatory Assurance & Empathy (All Replies)",
     english:
-      "Every Reply Generator response must include an explicit Assurance row confirming their order/money is protected by Shopee Guarantee (and for Est. Delivery inquiries, reassure them 'no worries'—that date is only an estimate since international orders usually arrive within 5–14 days), plus genuine Empathy whenever the customer is worried, frustrated, delayed, or facing an issue.",
+      "Every Reply Generator response must include an explicit Assurance row confirming their order/money is protected by Shopee Guarantee (if within the 5–14 day schedule/EDD, reassure 'no worries' that international orders usually arrive in 5–14 days; if past EDD or >14 days, do NOT mention 5–14 days—give warm Empathy and assure we follow up with the courier), plus genuine Empathy whenever CX is worried, delayed, or frustrated.",
     portuguese:
-      'Todo atendimento deve incluir uma linha clara de Garantia ("Garantia Shopee") — nos casos de prazo, tranquilizando que a data é apenas uma estimativa (pedidos internacionais costumam chegar em 5 a 14 dias) — e empatia sincera sempre que o cliente demonstrar preocupação, atraso, frustração ou problema.',
+      'Todo atendimento deve incluir Garantia Shopee (se dentro do prazo de 5 a 14 dias/estimativa, tranquilize sobre os 5 a 14 dias; se já passou do prazo, NÃO cite 5 a 14 dias — dê empatia sincera e garanta acompanhamento com a transportadora) e empatia sempre que houver preocupação, atraso ou frustração.',
     isPrimary: true,
     sortOrder: 10,
   },
@@ -145,9 +145,9 @@ export const DEFAULT_STORE_RULES: StoreRuleEntry[] = [
     id: "default-15",
     topic: "Past EDD With Fresh Tracking Scan Today",
     english:
-      "When the Estimated Delivery Date has passed yet tracking shows a fresh update today, acknowledge the missed EDD honestly instead of quoting it as still valid, highlight today's newest movement scan, explain international customs/local distribution delays, and include both courier follow-up phrases + Shopee Guarantee.",
+      "When the Estimated Delivery Date has passed yet tracking shows a fresh update today, do NOT mention 5–14 days anymore. Lead with warm Empathy, acknowledge the missed EDD honestly instead of quoting it as still valid, highlight today's newest movement scan, and include both courier follow-up phrases + Shopee Guarantee.",
     portuguese:
-      'Quando a data estimada já passou mas há atualização de rastreio hoje, reconheça o atraso com transparência em vez de citar o prazo antigo como válido, destaque a nova movimentação de hoje e inclua ambas as frases de acompanhamento junto à transportadora + Garantia Shopee.',
+      'Quando a data estimada já passou mas há atualização de rastreio hoje, NÃO cite mais 5 a 14 dias. Comece com empatia, reconheça o atraso com transparência, destaque a movimentação de hoje e inclua ambas as frases de acompanhamento junto à transportadora + Garantia Shopee.',
     isPrimary: false,
     sortOrder: 14,
   },

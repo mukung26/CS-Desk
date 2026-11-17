@@ -1,9 +1,49 @@
 import {
+  evaluateDeliveryScheduleStatus,
   isGenericExpressCarrier,
   resolveCourierFromTracking,
 } from "../../shared/csPromptEngine";
 
-export { isGenericExpressCarrier, resolveCourierFromTracking };
+export {
+  evaluateDeliveryScheduleStatus,
+  isGenericExpressCarrier,
+  resolveCourierFromTracking,
+};
+
+export interface CourierTrackingLink {
+  courier: string;
+  trackingNumber: string;
+  url: string;
+}
+
+export function getCourierTrackingUrl(
+  trackingNumber?: string,
+  rawCarrier?: string
+): CourierTrackingLink | null {
+  const clean = trackingNumber?.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  if (!clean || clean.length < 6) return null;
+  const courier = resolveCourierFromTracking(clean, rawCarrier) || "Correios";
+
+  if (courier === "SPX" || clean.startsWith("BR")) {
+    return {
+      courier: "SPX",
+      trackingNumber: clean,
+      url: `https://spx.shopee.com.br/track?tracking_number=${encodeURIComponent(clean)}`,
+    };
+  }
+  if (courier === "Anjun Express" || clean.startsWith("AJ")) {
+    return {
+      courier: "Anjun Express",
+      trackingNumber: clean,
+      url: `https://anjunexpress.com.br/?tracking=${encodeURIComponent(clean)}`,
+    };
+  }
+  return {
+    courier: "Correios",
+    trackingNumber: clean,
+    url: `https://rastreamento.correios.com.br/app/index.php?objeto=${encodeURIComponent(clean)}`,
+  };
+}
 
 export interface ParsedShopeeOrder {
   orderSn?: string;
@@ -385,4 +425,66 @@ export function detectDefaultPathForScenario(
   }
 
   return undefined;
+}
+
+export function splitBatchOrderPastes(rawText: string, maxItems = 5): string[] {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+
+  // 1. Explicit horizontal separators (--- or ===)
+  if (/^\s*(?:---+|===+)\s*$/m.test(trimmed)) {
+    return trimmed
+      .split(/^\s*(?:---+|===+)\s*$/m)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+
+  // 2. Auto-detect multiple Order SN / Order # headers
+  const lines = trimmed.split(/\r?\n/);
+  const blocks: string[] = [];
+  let current: string[] = [];
+
+  const isOrderBoundary = (line: string, idx: number): boolean => {
+    if (idx === 0) return false;
+    const t = line.trim();
+    if (!t) return false;
+    const startsNewOrder =
+      /^Order\s*(?:SN\s*:?|#[A-Z0-9]{6,})/i.test(t) ||
+      /^Case\s*\d+\s*[:\-]/i.test(t);
+    if (!startsNewOrder) return false;
+    // Only split if current block already has substantial content or a CX concern
+    const currentText = current.join("\n");
+    return (
+      currentText.trim().length > 25 &&
+      (/(?:CX\s*[>:]|Order\s*(?:SN|#))/i.test(currentText) || current.length >= 2)
+    );
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isOrderBoundary(lines[i], i)) {
+      const joined = current.join("\n").trim();
+      if (joined) blocks.push(joined);
+      current = [lines[i]];
+    } else {
+      current.push(lines[i]);
+    }
+  }
+  const tail = current.join("\n").trim();
+  if (tail) blocks.push(tail);
+
+  if (blocks.length > 1) {
+    return blocks.slice(0, maxItems);
+  }
+
+  // 3. Fallback: split on double blank lines when multiple blocks contain ">" or "CX"
+  const doubleBreakParts = trimmed
+    .split(/\n{3,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (doubleBreakParts.length > 1) {
+    return doubleBreakParts.slice(0, maxItems);
+  }
+
+  return [trimmed];
 }

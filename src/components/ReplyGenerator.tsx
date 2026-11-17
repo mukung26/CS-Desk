@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Copy,
   Check,
@@ -8,8 +8,13 @@ import {
   Table as TableIcon,
   AlertCircle,
   MessageSquare,
+  ExternalLink,
+  Layers,
+  Keyboard,
 } from "lucide-react";
 import {
+  AiProviderPreference,
+  AiStatusInfo,
   AppliedRuleChange,
   AppliedScriptChange,
   GeneratedReply,
@@ -23,10 +28,16 @@ import {
 import { copyToClipboard, formatRowsAsMarkdownTable } from "../utils/clipboard";
 import {
   detectDefaultPathForScenario,
+  evaluateDeliveryScheduleStatus,
+  getCourierTrackingUrl,
   isGenericExpressCarrier,
   parseShopeeOrderPaste,
   resolveCourierFromTracking,
 } from "../utils/shopeeParser";
+import { analyzeBrazilianSlangAndTone } from "../../shared/slangToneDetector";
+import { formatAiProviderName } from "../utils/aiProviderLabels";
+import { AiModelSelector } from "./AiModelSelector";
+import { BatchOrderTriage } from "./BatchOrderTriage";
 import { VisualGuideStrip } from "./VisualGuideStrip";
 
 interface ReplyGeneratorProps {
@@ -64,6 +75,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   onOpenInChatFlow,
   onOpenVisualGuides,
 }) => {
+  const [workspaceMode, setWorkspaceMode] = useState<"single" | "batch">("single");
   const [input, setInput] = useState("");
   const [carrierName, setCarrierName] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
@@ -79,6 +91,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const [activePathId, setActivePathId] = useState<string | null>(null);
   const [manualScenarioLock, setManualScenarioLock] = useState(false);
   const [tone, setTone] = useState<ToneOption>(ToneOption.STANDARD);
+  const [manualToneLock, setManualToneLock] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AiProviderPreference>("auto");
+  const [aiModel, setAiModel] = useState("");
+  const [aiStatus, setAiStatus] = useState<AiStatusInfo | null>(null);
   const [autoLearnRules, setAutoLearnRules] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -95,6 +111,38 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
   const [pendingLearnedUpdates, setPendingLearnedUpdates] = useState<LearnedRuleUpdate[]>([]);
   const [pendingLearnedScripts, setPendingLearnedScripts] = useState<LearnedScriptUpdate[]>([]);
   const [learnNotice, setLearnNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/ai-status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: AiStatusInfo | null) => {
+        if (active && data) setAiStatus(data);
+      })
+      .catch(() => {
+        // ignore status check failure
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const slangAnalysis = useMemo(() => analyzeBrazilianSlangAndTone(input), [input]);
+
+  const scheduleEval = useMemo(
+    () =>
+      evaluateDeliveryScheduleStatus({
+        rawText: input,
+        estimatedDate,
+        lastUpdateDate,
+      }),
+    [input, estimatedDate, lastUpdateDate]
+  );
+
+  const trackingLink = useMemo(
+    () => getCourierTrackingUrl(trackingNumber, carrierName),
+    [trackingNumber, carrierName]
+  );
 
   const branchingScenarios = useMemo(
     () => scenarios.filter((s) => s.paths && s.paths.length > 0),
@@ -174,7 +222,19 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         setActiveScenarioId(null);
         setActivePathId(null);
       }
+      if (!manualToneLock) {
+        setTone(ToneOption.STANDARD);
+      }
       return;
+    }
+
+    if (!manualToneLock) {
+      const nextSlang = analyzeBrazilianSlangAndTone(nextText);
+      if (nextSlang.recommendedTone === "Extra Empathetic") {
+        setTone(ToneOption.EMPATHETIC);
+      } else {
+        setTone(ToneOption.STANDARD);
+      }
     }
 
     const parsed = parseShopeeOrderPaste(nextText);
@@ -297,6 +357,9 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           issueTopic: issueTopic.trim() || undefined,
           productSpec: productSpec.trim() || undefined,
           tone,
+          aiProvider,
+          aiModel: aiModel.trim() || undefined,
+          slangToneHint: slangAnalysis.promptHint || undefined,
           detectedAmount: detectedAmount || undefined,
           voucherTier: detectedVoucherTier.trim() || undefined,
           selectedScenarioTitle: activeScenario?.title || undefined,
@@ -401,6 +464,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 rawInput: trimmed,
                 originalPortuguese: generated.fullPortugueseMessage,
                 detectedScenario: generated.detectedScenario || activeScenario?.title,
+                aiProvider,
+                aiModel: aiModel.trim() || undefined,
                 customStoreRules: storeRules?.map((r) => ({
                   id: r.id,
                   topic: r.topic,
@@ -619,6 +684,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           originalPortuguese: originalGeneratedPt || undefined,
           editedPortuguese: displayedEditablePt.trim() || undefined,
           detectedScenario: reply?.detectedScenario || activeScenario?.title,
+          aiProvider,
+          aiModel: aiModel.trim() || undefined,
           customStoreRules: storeRules?.map((r) => ({
             id: r.id,
             topic: r.topic,
@@ -715,6 +782,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     setActivePathId(null);
     setManualScenarioLock(false);
     setTone(ToneOption.STANDARD);
+    setManualToneLock(false);
     setReply(null);
     setOutputPathId(null);
     setEditedPtByPath({});
@@ -745,18 +813,209 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
     if (ok) markCopied(`row-${idx}`);
   };
 
+  // Chrome-safe keyboard shortcuts (Avoids Ctrl+Shift+C which opens Chrome DevTools Inspect!)
+  const shortcutRefs = useRef({
+    handleGenerate,
+    handleCopyFullPt,
+    handleCopyMarkdownTable,
+    handleCopyRow,
+    displayedRows,
+    displayedEditablePt,
+    isLoading,
+    workspaceMode,
+  });
+  shortcutRefs.current = {
+    handleGenerate,
+    handleCopyFullPt,
+    handleCopyMarkdownTable,
+    handleCopyRow,
+    displayedRows,
+    displayedEditablePt,
+    isLoading,
+    workspaceMode,
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const ctx = shortcutRefs.current;
+      if (ctx.workspaceMode !== "single") return;
+
+      // Ctrl+Enter / Cmd+Enter -> Generate reply from anywhere in Single Order mode
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key === "Enter") {
+        if (!ctx.isLoading) {
+          e.preventDefault();
+          void ctx.handleGenerate();
+        }
+        return;
+      }
+
+      // Alt+C -> Copy Full Portuguese (safe alternative to Chrome's Ctrl+Shift+C Inspect shortcut)
+      if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        (e.code === "KeyC" || e.key.toLowerCase() === "c")
+      ) {
+        if (ctx.displayedEditablePt) {
+          e.preventDefault();
+          void ctx.handleCopyFullPt();
+        }
+        return;
+      }
+
+      // Alt+M -> Copy Markdown Table
+      if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        (e.code === "KeyM" || e.key.toLowerCase() === "m")
+      ) {
+        if (ctx.displayedRows.length > 0) {
+          e.preventDefault();
+          void ctx.handleCopyMarkdownTable();
+        }
+        return;
+      }
+
+      // Alt+1..Alt+9 (or 1..9 when not focused in a form field) -> Copy sentence row 1..9
+      const digitMatch = e.code.match(/^Digit([1-9])$/);
+      const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
+      const isEditingField =
+        activeTag === "INPUT" ||
+        activeTag === "TEXTAREA" ||
+        activeTag === "SELECT" ||
+        Boolean((document.activeElement as HTMLElement | null)?.isContentEditable);
+
+      const isAltDigit = e.altKey && !e.ctrlKey && !e.metaKey && Boolean(digitMatch);
+      const isPlainDigitOutsideField =
+        !isEditingField &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        /^[1-9]$/.test(e.key);
+
+      if (isAltDigit || isPlainDigitOutsideField) {
+        const idx =
+          Number.parseInt(digitMatch ? digitMatch[1] : e.key, 10) - 1;
+        const targetRow = ctx.displayedRows[idx];
+        if (targetRow?.portuguese) {
+          e.preventDefault();
+          void ctx.handleCopyRow(idx, targetRow.portuguese);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const quickPresets = [
     scenarios.find((s) => s.id === "s4"),
+    scenarios.find((s) => s.id === "s3"),
     scenarios.find((s) => s.id === "s6"),
     scenarios.find((s) => s.id === "s14"),
     scenarios.find((s) => s.id === "s15"),
+    scenarios.find((s) => s.id === "s22"),
+    scenarios.find((s) => s.id === "s23"),
     scenarios.find((s) => s.id === "s16"),
-    scenarios.find((s) => s.id === "s13"),
-    scenarios.find((s) => s.id === "s7"),
   ].filter((s): s is ScriptScenario => Boolean(s));
+
+  const loadScenarioDemo = (preset: ScriptScenario) => {
+    setCarrierName("");
+    setTrackingNumber("");
+    setLastUpdateDate("");
+    setEstimatedDate("");
+    setLatestStatus("");
+    setIssueTopic("");
+    setProductSpec("");
+    setDetectedVoucherTier("");
+    setManualScenarioLock(false);
+    setManualToneLock(false);
+    applyInputWithAutoParse(preset.sampleInput, true, preset.id);
+    setError(null);
+    onTrackUsageEvents?.([
+      {
+        itemType: "script",
+        itemId: preset.id,
+        itemTitle: preset.title,
+        category: preset.category,
+        event: "accessed",
+      },
+    ]);
+  };
 
   return (
     <div className="space-y-6">
+      {/* Workspace Mode Bar (Single Order vs Batch Order Triage) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800/80 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setWorkspaceMode("single")}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              workspaceMode === "single"
+                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+            }`}
+          >
+            Single Order
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceMode("batch")}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              workspaceMode === "batch"
+                ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Batch Triage (Multi-Paste)
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+          <Keyboard className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            <kbd className="px-1.5 py-0.5 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
+              Ctrl+Enter
+            </kbd>{" "}
+            Generate ·{" "}
+            <kbd className="px-1.5 py-0.5 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
+              Alt+C
+            </kbd>{" "}
+            Copy PT ·{" "}
+            <kbd className="px-1.5 py-0.5 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
+              Alt+1–9
+            </kbd>{" "}
+            Copy Row
+          </span>
+        </div>
+      </div>
+
+      {workspaceMode === "batch" ? (
+        <BatchOrderTriage
+          scenarios={scenarios}
+          storeRules={storeRules}
+          aiProvider={aiProvider}
+          aiModel={aiModel}
+          aiStatus={aiStatus}
+          onChangeProvider={setAiProvider}
+          onChangeModel={setAiModel}
+          onTrackUsageEvents={onTrackUsageEvents}
+          onOpenSingleOrder={(rawText) => {
+            setWorkspaceMode("single");
+            setManualScenarioLock(false);
+            setManualToneLock(false);
+            applyInputWithAutoParse(rawText, true);
+          }}
+          onOpenInChatFlow={onOpenInChatFlow}
+        />
+      ) : (
+        <>
       {/* Input Form Panel */}
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -778,7 +1037,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
           </button>
         </div>
 
-        {/* Quick Sample Loaders */}
+        {/* Quick Sample Loaders + All 24 Demo Cases Dropdown */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
             Load example:
@@ -787,33 +1046,28 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             <button
               key={preset.id}
               type="button"
-              onClick={() => {
-                setCarrierName("");
-                setTrackingNumber("");
-                setLastUpdateDate("");
-                setEstimatedDate("");
-                setLatestStatus("");
-                setIssueTopic("");
-                setProductSpec("");
-                setDetectedVoucherTier("");
-                setManualScenarioLock(false);
-                applyInputWithAutoParse(preset.sampleInput, true, preset.id);
-                setError(null);
-                onTrackUsageEvents?.([
-                  {
-                    itemType: "script",
-                    itemId: preset.id,
-                    itemTitle: preset.title,
-                    category: preset.category,
-                    event: "accessed",
-                  },
-                ]);
-              }}
+              onClick={() => loadScenarioDemo(preset)}
               className="px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {preset.number}. {preset.title}
             </button>
           ))}
+          <select
+            aria-label="Load any demo scenario"
+            value=""
+            onChange={(e) => {
+              const found = scenarios.find((s) => s.id === e.target.value);
+              if (found) loadScenarioDemo(found);
+            }}
+            className="px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:border-[#EE4D2D] focus:border-[#EE4D2D] focus:outline-none cursor-pointer"
+          >
+            <option value="">All Demo Cases ({scenarios.length})...</option>
+            {scenarios.map((s) => (
+              <option key={s.id} value={s.id}>
+                {String(s.number).padStart(2, "0")}. {s.title}
+              </option>
+            ))}
+          </select>
         </div>
 
         <form onSubmit={handleGenerate} className="mt-4 space-y-4">
@@ -853,14 +1107,64 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               rows={6}
               value={input}
               onChange={(e) => applyInputWithAutoParse(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                  void handleGenerate();
-                }
-              }}
               placeholder="Paste the Shopee Seller Center order + tracking log followed by CX> concern (e.g., CX> when does it arrives?) and any agent notes..."
               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/70 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
             />
+
+            {/* Brazilian Regional Slang, Tone & Delivery Schedule Analysis Strip */}
+            {(slangAnalysis.hasSignals || !scheduleEval.isWithin5to14Schedule || estimatedDate.trim()) && (
+              <div className="mt-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="space-y-0.5 text-slate-600 dark:text-slate-300">
+                  {slangAnalysis.hasSignals && (
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Tone &amp; BR Slang:{" "}
+                      </span>
+                      <span
+                        className={
+                          slangAnalysis.mood === "High-Risk / Frustrated"
+                            ? "font-medium text-red-700 dark:text-red-400"
+                            : slangAnalysis.mood === "Anxious / Impatient"
+                              ? "font-medium text-amber-700 dark:text-amber-400"
+                              : "text-slate-700 dark:text-slate-300"
+                        }
+                      >
+                        {slangAnalysis.summaryNote}
+                      </span>
+                    </div>
+                  )}
+                  {(estimatedDate.trim() || !scheduleEval.isWithin5to14Schedule) && (
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Assurance Rule:{" "}
+                      </span>
+                      {scheduleEval.isWithin5to14Schedule ? (
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          Within 5–14d schedule · Reassure 5–14 days + Shopee Guarantee
+                        </span>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-400 font-medium">
+                          Past 5–14d / Past EDD · 5–14 days suppressed · Lead with Empathy + Courier Follow-Up
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {slangAnalysis.recommendedTone === "Extra Empathetic" &&
+                  tone !== ToneOption.EMPATHETIC && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTone(ToneOption.EMPATHETIC);
+                        setManualToneLock(true);
+                      }}
+                      className="px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white dark:bg-slate-900 border border-[#EE4D2D]/50 rounded-md hover:bg-orange-50 dark:hover:bg-[#EE4D2D]/15 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      Apply Extra Empathetic
+                    </button>
+                  )}
+              </div>
+            )}
           </div>
 
           {/* Interactive CX Response Path Selector */}
@@ -1017,12 +1321,25 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             </div>
 
             <div>
-              <label
-                htmlFor="tracking-input"
-                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
-              >
-                [TRACKING]
-              </label>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label
+                  htmlFor="tracking-input"
+                  className="block text-[11px] font-medium text-slate-500 dark:text-slate-400"
+                >
+                  [TRACKING]
+                </label>
+                {trackingLink && (
+                  <a
+                    href={trackingLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[#EE4D2D] hover:underline whitespace-nowrap"
+                  >
+                    Track {trackingLink.courier}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
               <input
                 id="tracking-input"
                 type="text"
@@ -1149,6 +1466,14 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               Auto-detect new scenarios &amp; rules (saves generalized spiels to Script Library &amp; Store Rules)
             </label>
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <AiModelSelector
+                idPrefix="rg"
+                aiProvider={aiProvider}
+                aiModel={aiModel}
+                aiStatus={aiStatus}
+                onChangeProvider={setAiProvider}
+                onChangeModel={setAiModel}
+              />
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="tone-select"
@@ -1159,7 +1484,10 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 <select
                   id="tone-select"
                   value={tone}
-                  onChange={(e) => setTone(e.target.value as ToneOption)}
+                  onChange={(e) => {
+                    setTone(e.target.value as ToneOption);
+                    setManualToneLock(true);
+                  }}
                   className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15"
                 >
                   <option value={ToneOption.STANDARD}>Standard Polite</option>
@@ -1335,18 +1663,39 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
           <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <span className="font-medium text-slate-700 dark:text-slate-300">{reply.category}</span>
                 <span aria-hidden="true">·</span>
                 <span>{reply.detectedScenario}</span>
+                {reply.aiMeta && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {formatAiProviderName(reply.aiMeta.provider)} ({reply.aiMeta.model})
+                    </span>
+                  </>
+                )}
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300 mt-1">{displayedPolicySummary}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {trackingLink && (
+                <a
+                  href={trackingLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0"
+                >
+                  Track {trackingLink.courier}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+
               <button
                 type="button"
                 onClick={handleCopyMarkdownTable}
+                title="Copy Markdown table (Alt+M)"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {copiedId === "md-table" ? (
@@ -1376,6 +1725,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
               <button
                 type="button"
                 onClick={handleCopyFullPt}
+                title="Copy full Portuguese message (Alt+C)"
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#EE4D2D] hover:bg-[#d94123] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {copiedId === "full-pt" ? (
@@ -1386,7 +1736,7 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5" />
-                    Copy Full Portuguese
+                    Copy Full Portuguese (Alt+C)
                   </>
                 )}
               </button>
@@ -1477,13 +1827,24 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
                       <button
                         type="button"
                         onClick={() => void handleCopyRow(idx, row.portuguese)}
-                        title="Copy Portuguese sentence"
+                        title={
+                          idx < 9
+                            ? `Copy Portuguese sentence (Alt+${idx + 1})`
+                            : "Copy Portuguese sentence"
+                        }
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded hover:border-[#EE4D2D] hover:text-[#EE4D2D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         {copiedId === `row-${idx}` ? (
                           <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         ) : (
-                          <Copy className="w-3.5 h-3.5" />
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            {idx < 9 && (
+                              <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">
+                                {idx + 1}
+                              </span>
+                            )}
+                          </>
                         )}
                       </button>
                     </td>
@@ -1535,6 +1896,8 @@ export const ReplyGenerator: React.FC<ReplyGeneratorProps> = ({
             onBrowseAll={onOpenVisualGuides}
           />
         </section>
+      )}
+        </>
       )}
     </div>
   );

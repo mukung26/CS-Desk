@@ -3,9 +3,9 @@ import {
   type ChatFlowRequest,
 } from "../../shared/csPromptEngine.ts";
 import {
-  callGeminiEdgeWithFallback,
-  mapGeminiEdgeError,
-} from "../_shared/geminiEdge.ts";
+  generateStructuredAiEdge,
+  mapAiEdgeError,
+} from "../_shared/aiEdge.ts";
 import { jsonResponse, type PagesContext } from "../_shared/types.ts";
 
 export async function onRequestPost(context: PagesContext): Promise<Response> {
@@ -26,39 +26,28 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       );
     }
 
-    const apiKey = context.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
-      return jsonResponse(
-        {
-          error:
-            "GEMINI_API_KEY is not configured. Please add it in Cloudflare Pages > Settings > Environment variables.",
-        },
-        500
-      );
-    }
-
     const { contextLines, systemInstruction, responseSchema } =
       buildChatFlowPromptAndSchema(body, orderContext, latestCxMessage);
 
-    const jsonText = await callGeminiEdgeWithFallback({
-      apiKey,
-      preferredModel: context.env.GEMINI_MODEL,
+    const result = await generateStructuredAiEdge({
+      env: context.env,
+      contents: contextLines,
       systemInstruction,
-      userContent: contextLines,
       responseSchema,
+      aiProvider: body.aiProvider,
+      aiModel: body.aiModel,
     });
 
-    if (!jsonText) {
-      return jsonResponse(
-        { error: "Empty response received from the AI service. Please try again." },
-        502
-      );
-    }
-
-    const parsed = JSON.parse(jsonText);
-    return jsonResponse(parsed);
+    const parsed = JSON.parse(result.text);
+    return jsonResponse({
+      ...parsed,
+      aiMeta: {
+        provider: result.provider,
+        model: result.model,
+      },
+    });
   } catch (err: unknown) {
-    const mapped = mapGeminiEdgeError(err);
+    const mapped = mapAiEdgeError(err);
     console.error("Cloudflare chat-flow error:", mapped.message);
     return jsonResponse({ error: mapped.message }, mapped.status);
   }

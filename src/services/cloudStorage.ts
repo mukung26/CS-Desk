@@ -661,26 +661,38 @@ export async function seedDefaultCloudStoreRulesIfEmpty(
       mutationCount++;
     }
 
-    const rulesToSync: Array<{ id: string; legacyPrefix: string; checkMissing: string }> = [
+    const rulesToSync: Array<{ id: string; legacyPrefixes: string[]; checkPresent: string }> = [
       {
         id: "default-3",
-        legacyPrefix: "Format dates in Brazilian DD/MM/YYYY",
-        checkMissing: "5–14",
+        legacyPrefixes: [
+          "Format dates in Brazilian DD/MM/YYYY",
+        ],
+        checkPresent: "IF within the 5–14 days schedule",
       },
       {
         id: "default-4",
-        legacyPrefix: "Never say an order in customs inspection is lost",
-        checkMissing: "never promise a specific delivery date",
+        legacyPrefixes: ["Never say an order in customs inspection is lost"],
+        checkPresent: "never promise a specific delivery date",
       },
       {
         id: "default-7",
-        legacyPrefix: "Never promise an immediate refund. Always request a short video",
-        checkMissing: "Short circuit",
+        legacyPrefixes: ["Never promise an immediate refund. Always request a short video"],
+        checkPresent: "Short circuit",
       },
       {
         id: "default-11",
-        legacyPrefix: "Every cancellation, refund, delivery delay",
-        checkMissing: "Empathy",
+        legacyPrefixes: [
+          "Every cancellation, refund, delivery delay",
+          "Every Reply Generator response must include an explicit Assurance row confirming their order/money is protected by Shopee Guarantee (and for Est. Delivery inquiries",
+        ],
+        checkPresent: "if past EDD or >14 days, do NOT mention 5–14 days",
+      },
+      {
+        id: "default-15",
+        legacyPrefixes: [
+          "When the Estimated Delivery Date has passed yet tracking shows a fresh update today, acknowledge",
+        ],
+        checkPresent: "do NOT mention 5–14 days anymore",
       },
     ];
     for (const item of rulesToSync) {
@@ -688,10 +700,9 @@ export async function seedDefaultCloudStoreRulesIfEmpty(
       const latestDefault = DEFAULT_STORE_RULES.find((r) => r.id === item.id);
       if (!existingData || !latestDefault) continue;
       const currentEn = String(existingData.english || "");
-      const hasUpdate =
-        currentEn.includes(item.checkMissing) ||
-        (item.checkMissing === "5–14" && currentEn.includes("5-14"));
-      if (!hasUpdate && currentEn.startsWith(item.legacyPrefix)) {
+      const hasUpdate = currentEn.includes(item.checkPresent);
+      const matchesLegacy = item.legacyPrefixes.some((p) => currentEn.startsWith(p));
+      if (!hasUpdate && matchesLegacy) {
         batch.update(doc(db, `${path}/${item.id}`), {
           topic: clamp(latestDefault.topic, 160),
           english: clamp(latestDefault.english, 2000),

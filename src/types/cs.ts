@@ -98,6 +98,27 @@ export interface AppliedScriptChange {
   reason: string;
 }
 
+export type AiProviderPreference = "auto" | "gemini" | "groq" | "openrouter";
+
+export interface AiStatusInfo {
+  geminiConfigured: boolean;
+  groqConfigured: boolean;
+  openrouterConfigured: boolean;
+  geminiModel: string;
+  groqModel: string;
+  openrouterModel: string;
+  availableModels: {
+    gemini: string[];
+    groq: string[];
+    openrouter: string[];
+  };
+}
+
+export interface AiResponseMeta {
+  provider: "gemini" | "groq" | "openrouter";
+  model: string;
+}
+
 export interface GeneratedReply {
   detectedScenario: string;
   matchedScenarioId?: string;
@@ -111,6 +132,7 @@ export interface GeneratedReply {
   pathReplies?: GeneratedPathReply[];
   learnedRuleUpdates?: LearnedRuleUpdate[];
   learnedScriptUpdates?: LearnedScriptUpdate[];
+  aiMeta?: AiResponseMeta;
 }
 
 export interface ProbingQuestion {
@@ -142,6 +164,7 @@ export interface ChatFlowTurn {
   fullPortugueseMessage: string;
   suggestedGuideIds?: string[];
   editedPortuguese?: string;
+  aiMeta?: AiResponseMeta;
 }
 
 export interface ChatFlowSessionEntry {

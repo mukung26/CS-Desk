@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Copy,
   Check,
@@ -14,22 +14,30 @@ import {
   Sparkles,
   Cloud,
   Trash2,
+  ExternalLink,
+  Keyboard,
 } from "lucide-react";
 import {
+  AiProviderPreference,
+  AiStatusInfo,
   ChatFlowChoice,
   ChatFlowSessionEntry,
   ChatFlowTurn,
-  GeneratedReply,
   ScriptScenario,
   StoreRuleEntry,
   ToneOption,
 } from "../types/cs";
 import { copyToClipboard, formatRowsAsMarkdownTable } from "../utils/clipboard";
 import {
+  evaluateDeliveryScheduleStatus,
+  getCourierTrackingUrl,
   isGenericExpressCarrier,
   parseShopeeOrderPaste,
   resolveCourierFromTracking,
 } from "../utils/shopeeParser";
+import { analyzeBrazilianSlangAndTone } from "../../shared/slangToneDetector";
+import { formatAiProviderName } from "../utils/aiProviderLabels";
+import { AiModelSelector } from "./AiModelSelector";
 import { VisualGuideStrip } from "./VisualGuideStrip";
 
 interface ChatFlowProps {
@@ -94,6 +102,10 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   const [detectedVoucherTier, setDetectedVoucherTier] = useState("");
 
   const [tone, setTone] = useState<ToneOption>(ToneOption.STANDARD);
+  const [manualToneLock, setManualToneLock] = useState(false);
+  const [aiProvider, setAiProvider] = useState<AiProviderPreference>("auto");
+  const [aiModel, setAiModel] = useState("");
+  const [aiStatus, setAiStatus] = useState<AiStatusInfo | null>(null);
   const [includeProbingQuestions, setIncludeProbingQuestions] = useState(true);
   const [showOrderStats, setShowOrderStats] = useState(true);
 
@@ -110,6 +122,41 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cloudFlowSavedBadge, setCloudFlowSavedBadge] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/ai-status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: AiStatusInfo | null) => {
+        if (active && data) setAiStatus(data);
+      })
+      .catch(() => {
+        // ignore status check failure
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const slangAnalysis = useMemo(
+    () => analyzeBrazilianSlangAndTone(`${orderInput}\n${customCxReply}`),
+    [orderInput, customCxReply]
+  );
+
+  const scheduleEval = useMemo(
+    () =>
+      evaluateDeliveryScheduleStatus({
+        rawText: orderInput,
+        estimatedDate,
+        lastUpdateDate,
+      }),
+    [orderInput, estimatedDate, lastUpdateDate]
+  );
+
+  const trackingLink = useMemo(
+    () => getCourierTrackingUrl(trackingNumber, carrierName),
+    [trackingNumber, carrierName]
+  );
+
   const applyOrderInputWithAutoParse = (
     nextText: string,
     forceOverwrite = false
@@ -121,7 +168,19 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
       if (forceOverwrite) {
         setDetectedVoucherTier("");
       }
+      if (!manualToneLock) {
+        setTone(ToneOption.STANDARD);
+      }
       return;
+    }
+
+    if (!manualToneLock) {
+      const nextSlang = analyzeBrazilianSlangAndTone(nextText);
+      if (nextSlang.recommendedTone === "Extra Empathetic") {
+        setTone(ToneOption.EMPATHETIC);
+      } else {
+        setTone(ToneOption.STANDARD);
+      }
     }
 
     const parsed = parseShopeeOrderPaste(nextText);
@@ -218,6 +277,12 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
           issueTopic: issueTopic.trim() || undefined,
           productSpec: productSpec.trim() || undefined,
           tone,
+          aiProvider,
+          aiModel: aiModel.trim() || undefined,
+          slangToneHint:
+            analyzeBrazilianSlangAndTone(
+              `${trimmedOrder}\n${trimmedCx}`
+            ).promptHint || undefined,
           detectedAmount: detectedAmount || undefined,
           voucherTier: detectedVoucherTier.trim() || undefined,
           customStoreRules: storeRules?.map((r) => ({
@@ -252,6 +317,7 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         suggestedGuideIds: Array.isArray(data.suggestedGuideIds)
           ? (data.suggestedGuideIds as string[])
           : undefined,
+        aiMeta: data.aiMeta,
       };
 
       const nextTurns = [...baseTurns, newTurn];
@@ -370,6 +436,8 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
     setDetectedOrderSn(null);
     setDetectedAmount(null);
     setDetectedVoucherTier("");
+    setTone(ToneOption.STANDARD);
+    setManualToneLock(false);
     setTurns([]);
     setEditedPtByTurn({});
     setCustomCxReply("");
@@ -454,6 +522,33 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
 
   const latestTurn = turns.length > 0 ? turns[turns.length - 1] : null;
 
+  const shortcutCtxRef = useRef({ latestTurn, editedPtByTurn });
+  shortcutCtxRef.current = { latestTurn, editedPtByTurn };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        (e.code === "KeyC" || e.key.toLowerCase() === "c")
+      ) {
+        const { latestTurn: curTurn, editedPtByTurn: ptMap } =
+          shortcutCtxRef.current;
+        if (!curTurn) return;
+        const textToCopy = ptMap[curTurn.id] ?? curTurn.fullPortugueseMessage;
+        if (!textToCopy) return;
+        e.preventDefault();
+        void copyToClipboard(textToCopy).then((ok) => {
+          if (ok) markCopied(`${curTurn.id}-full`);
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Order Context & Chat Flow Launcher */}
@@ -468,6 +563,15 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {latestTurn && (
+              <span className="hidden xl:inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 mr-1">
+                <Keyboard className="w-3.5 h-3.5" />
+                <kbd className="px-1.5 py-0.5 font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded">
+                  Alt+C
+                </kbd>{" "}
+                Copy Latest PT
+              </span>
+            )}
             {turns.length > 0 && (
               <button
                 type="button"
@@ -571,20 +675,33 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
         {/* Compact detected summary when collapsed */}
         {!showOrderStats &&
           (detectedOrderSn || carrierName || trackingNumber || detectedAmount) && (
-            <div className="mt-3 text-xs font-mono text-slate-600 dark:text-slate-400 tabular-nums">
-              {[
-                detectedOrderSn ? `Order ${detectedOrderSn}` : null,
-                detectedAmount
-                  ? detectedVoucherTier.trim()
-                    ? `${detectedAmount} (Offer ${detectedVoucherTier.trim()} Voucher)`
-                    : `${detectedAmount} (Escalate >R$25)`
-                  : null,
-                carrierName || null,
-                trackingNumber || null,
-                estimatedDate ? `Est. ${estimatedDate}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-slate-600 dark:text-slate-400 tabular-nums">
+              <span>
+                {[
+                  detectedOrderSn ? `Order ${detectedOrderSn}` : null,
+                  detectedAmount
+                    ? detectedVoucherTier.trim()
+                      ? `${detectedAmount} (Offer ${detectedVoucherTier.trim()} Voucher)`
+                      : `${detectedAmount} (Escalate >R$25)`
+                    : null,
+                  carrierName || null,
+                  trackingNumber || null,
+                  estimatedDate ? `Est. ${estimatedDate}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {trackingLink && (
+                <a
+                  href={trackingLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-sans text-xs font-medium text-[#EE4D2D] hover:underline whitespace-nowrap"
+                >
+                  Track {trackingLink.courier}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
             </div>
           )}
 
@@ -660,6 +777,61 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   placeholder="Paste the Shopee Seller Center order + tracking log followed by CX> concern..."
                   className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/70 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-2 focus:ring-[#EE4D2D]/15 transition-colors"
                 />
+                {(slangAnalysis.hasSignals ||
+                  !scheduleEval.isWithin5to14Schedule ||
+                  estimatedDate.trim()) && (
+                  <div className="mt-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="space-y-0.5 text-slate-600 dark:text-slate-300">
+                      {slangAnalysis.hasSignals && (
+                        <div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            Tone &amp; BR Slang:{" "}
+                          </span>
+                          <span
+                            className={
+                              slangAnalysis.mood === "High-Risk / Frustrated"
+                                ? "font-medium text-red-700 dark:text-red-400"
+                                : slangAnalysis.mood === "Anxious / Impatient"
+                                  ? "font-medium text-amber-700 dark:text-amber-400"
+                                  : "text-slate-700 dark:text-slate-300"
+                            }
+                          >
+                            {slangAnalysis.summaryNote}
+                          </span>
+                        </div>
+                      )}
+                      {(estimatedDate.trim() || !scheduleEval.isWithin5to14Schedule) && (
+                        <div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            Assurance Rule:{" "}
+                          </span>
+                          {scheduleEval.isWithin5to14Schedule ? (
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              Within 5–14d schedule · Reassure 5–14 days + Shopee Guarantee
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 dark:text-amber-400 font-medium">
+                              Past 5–14d / Past EDD · 5–14 days suppressed · Lead with Empathy + Courier Follow-Up
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {slangAnalysis.recommendedTone === "Extra Empathetic" &&
+                      tone !== ToneOption.EMPATHETIC && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTone(ToneOption.EMPATHETIC);
+                            setManualToneLock(true);
+                          }}
+                          className="px-2.5 py-1 text-xs font-medium text-[#EE4D2D] bg-white dark:bg-slate-900 border border-[#EE4D2D]/50 rounded-md hover:bg-orange-50 dark:hover:bg-[#EE4D2D]/15 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          Apply Extra Empathetic
+                        </button>
+                      )}
+                  </div>
+                )}
               </div>
 
               {/* 8-field Order & Script Stats Grid */}
@@ -697,12 +869,25 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="cf-tracking"
-                    className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1"
-                  >
-                    [TRACKING]
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label
+                      htmlFor="cf-tracking"
+                      className="block text-[11px] font-medium text-slate-500 dark:text-slate-400"
+                    >
+                      [TRACKING]
+                    </label>
+                    {trackingLink && (
+                      <a
+                        href={trackingLink.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[#EE4D2D] hover:underline whitespace-nowrap"
+                      >
+                        Track {trackingLink.courier}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
                   <input
                     id="cf-tracking"
                     type="text"
@@ -820,6 +1005,14 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 </label>
 
                 <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <AiModelSelector
+                    idPrefix="cf"
+                    aiProvider={aiProvider}
+                    aiModel={aiModel}
+                    aiStatus={aiStatus}
+                    onChangeProvider={setAiProvider}
+                    onChangeModel={setAiModel}
+                  />
                   <div className="flex items-center gap-2">
                     <label
                       htmlFor="cf-tone"
@@ -830,7 +1023,10 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                     <select
                       id="cf-tone"
                       value={tone}
-                      onChange={(e) => setTone(e.target.value as ToneOption)}
+                      onChange={(e) => {
+                        setTone(e.target.value as ToneOption);
+                        setManualToneLock(true);
+                      }}
                       className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#EE4D2D] focus:outline-none"
                     >
                       <option value={ToneOption.STANDARD}>Standard Polite</option>
@@ -891,6 +1087,12 @@ export const ChatFlow: React.FC<ChatFlowProps> = ({
                 </div>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {turn.category} · {turn.detectedScenario}
+                  {turn.aiMeta && (
+                    <>
+                      {" · "}
+                      {formatAiProviderName(turn.aiMeta.provider)} ({turn.aiMeta.model})
+                    </>
+                  )}
                 </span>
               </div>
               <p className="mt-1.5 text-sm text-slate-900 dark:text-slate-100">{turn.cxMessage}</p>

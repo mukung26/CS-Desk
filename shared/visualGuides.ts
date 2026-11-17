@@ -400,17 +400,16 @@ export const VISUAL_GUIDE_CATEGORIES: VisualGuideCategory[] = [
 
 export function buildVisualGuidesPromptReference(): string {
   const guideLines = VISUAL_GUIDES.map(
-    (g) =>
-      `- id="${g.id}" | ${g.title}: ${g.whenToSend} (PT UI steps: ${g.uiStepsPt.join(" -> ")})`
+    (g) => `- id="${g.id}" | ${g.title}: ${g.whenToSend}`
   ).join("\n");
 
   const slaLines = REFUND_SLA_ROWS.map(
-    (r) => `- ${r.methodPt} -> ${r.destinationPt}: ${r.timeframePt} (${r.timeframeEn})`
+    (r) => `- ${r.methodPt}: ${r.timeframePt} (${r.timeframeEn})`
   ).join("\n");
 
-  return `OFFICIAL SHOPEE BRAZIL REFUND SLA TIMELINES (use exact timeframes whenever CX asks when their refund will arrive):
+  return `SHOPEE REFUND SLAS:
 ${slaLines}
 
-AVAILABLE CUSTOMER VISUAL GUIDE SCREENSHOTS (return 0 to 3 matching ids in "suggestedGuideIds" when a visual screenshot helps the customer):
+VISUAL GUIDES (return 0-3 ids in "suggestedGuideIds"):
 ${guideLines}`;
 }

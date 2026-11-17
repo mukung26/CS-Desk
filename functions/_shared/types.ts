@@ -1,6 +1,14 @@
 export interface CloudflareEnv {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+  GROQ_API_KEY?: string;
+  GROQ_BASE_URL?: string;
+  GROQ_MODEL?: string;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_BASE_URL?: string;
+  OPENROUTER_MODEL?: string;
+  AI_REQUEST_TIMEOUT_MS?: string;
+  APP_URL?: string;
 }
 
 export interface PagesContext {

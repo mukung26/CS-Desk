@@ -313,7 +313,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
     whenToUse:
       'Tracking shows "inspeção na alfândega" or similar for several days. Do not mention "lost" or suggest refund unless CX asks.',
     policyRule:
-      'Must state both required phrases: "we follow up this to courier" and "we expedite follow your order to courier".',
+      'Must state both required phrases: "we follow up this to courier" and "we expedite follow your order to courier". Mention 5–14 days ONLY if within the 5–14d schedule; if past schedule, omit 5–14 days and use Empathy + courier follow-up + Shopee Guarantee.',
     guideIds: ["return-refund", "find-order"],
     sampleInput:
       "Order #261028BR11M9 (Mechanical Keyboard, Tracking BR2699817253BR) > Tracking has been stuck at 'inspeção na alfândega' for 6 days and CX is worried.",
@@ -447,7 +447,7 @@ export const INITIAL_SCENARIOS: ScriptScenario[] = [
     whenToUse:
       'CX asks "when does it arrive?" or "where is my order?" while the order is in transit or experiencing a minor courier delay.',
     policyRule:
-      "Share latest update, assigned courier, estimated delivery date, tracking number, inform that we follow up with the assigned courier, and provide warm reassurance.",
+      "Share latest update, assigned courier, Est. Delivery, and tracking. If within 5–14d schedule/EDD, reassure 5–14 days; if past schedule, omit 5–14 days and lead with Empathy + courier follow-up + Shopee Guarantee.",
     guideIds: ["find-order"],
     sampleInput: `Order SN:
 2610097GCAVNED
@@ -1728,7 +1728,7 @@ CX> Cancel order`,
     whenToUse:
       "CX asks to expedite, rush, or prioritize their order shipping/delivery (or asks the store to speed up delivery).",
     policyRule:
-      "Clarify seller doesn't control courier speed/routing once shipped, confirm we follow up and expedite with courier, share status/tracking & 5–14d EDD estimate, plus Shopee Guarantee.",
+      "Clarify seller doesn't control courier speed/routing once shipped, confirm we follow up and expedite with courier, and provide Shopee Guarantee (cite 5–14d estimate ONLY if within schedule; if past schedule, omit 5–14d and lead with Empathy + courier follow-up).",
     guideIds: ["find-order"],
     sampleInput: `Order SN:
 26111044EXP8M1
@@ -2354,7 +2354,7 @@ CX: I paid for my order but it shows as if I had not paid`,
     whenToUse:
       'Tracking shows "Pedido chegou no Brasil" and then goes silent for many days.',
     policyRule:
-      "Explain that domestic sorting/inspection can have a silent gap, include both follow-up phrases, share 5–14d EDD estimate, and reassure under Shopee Guarantee.",
+      "Explain that domestic sorting/inspection can have a silent gap, include both follow-up phrases, and reassure under Shopee Guarantee (cite 5–14d estimate ONLY if within schedule; else omit 5–14d and use Empathy + courier follow-up).",
     guideIds: ["find-order"],
     sampleInput:
       "Order #261102BR88N2 (Tracking BR2688123400Q, Expresso padrão) > Tracking says 'Pedido chegou no Brasil' 8 days ago with no updates since.",
@@ -2827,7 +2827,7 @@ CX: I paid for my order but it shows as if I had not paid`,
     whenToUse:
       "The estimated delivery date has already passed, yet tracking shows a fresh scan today proving the parcel is still moving.",
     policyRule:
-      "Acknowledge the missed EDD honestly instead of quoting it as valid, highlight today's newest scan, include both courier follow-up phrases, and reassure under Shopee Guarantee.",
+      "Do NOT mention 5–14 days anymore. Lead with Empathy, acknowledge the missed EDD honestly instead of quoting it as valid, highlight today's newest scan, include both courier follow-up phrases, and reassure under Shopee Guarantee.",
     guideIds: ["find-order", "return-refund"],
     sampleInput:
       "Order #261020BR19K4 (Tracking BR2655432100Q, Estimated Delivery 08/11/2026, Latest Logistic Update: Today - In transit to local hub) > CX asks why it is past the date.",
